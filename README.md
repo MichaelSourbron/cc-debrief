@@ -321,6 +321,14 @@ Eleven distinct patterns, each with a copy-paste fix:
 
 ---
 
+## Acknowledgments
+
+Built for use with Anthropic's [Claude Code](https://www.anthropic.com/claude-code). This is an independent, unofficial third-party project — not endorsed by or affiliated with Anthropic. The JSONL transcript format and pricing model used in this report follow the public docs at [docs.claude.com](https://docs.claude.com) and the Anthropic blog.
+
+Inspired by adjacent tools in the Claude Code observability space — [`ccusage`](https://github.com/ryoppippi/ccusage), [`token-dashboard`](https://github.com/nateherkai/token-dashboard), [`claudetop`](https://github.com/liorwn/claudetop), [`lean-ctx`](https://github.com/yvgude/lean-ctx) — each of which solves an adjacent slice of the same problem.
+
+---
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
