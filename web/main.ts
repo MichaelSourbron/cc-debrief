@@ -552,6 +552,8 @@ function init(): void {
   });
 
   resetBtn.addEventListener("click", reset);
+  const backBtn = document.getElementById("back-btn");
+  if (backBtn) backBtn.addEventListener("click", reset);
 
   ["dragenter", "dragover"].forEach((ev) =>
     dropArea.addEventListener(ev, (e) => {
