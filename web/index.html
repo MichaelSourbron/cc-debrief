@@ -385,32 +385,29 @@
     </p>
 
     <div class="drop-area" id="drop-area">
-      <p class="primary-line">Pick your whole <strong><code>.claude</code></strong> folder for the full report</p>
-      <button class="pick" type="button" id="folder-btn">Choose .claude/ folder</button>
+      <p class="primary-line">Pick your <strong><code>.claude</code></strong> folder, or a specific project folder under <code>projects/</code></p>
+      <button class="pick" type="button" id="folder-btn">Choose folder</button>
       <input type="file" id="folder-input" webkitdirectory directory multiple />
-      <div class="or">or</div>
-      <label class="pick secondary" for="file-input">Choose JSONL file</label>
-      <input type="file" id="file-input" accept=".jsonl,application/json" />
+      <input type="file" id="file-input" accept=".jsonl,application/json" hidden />
     </div>
 
     <ul class="hint-list">
       <li>
         <strong>The full <code>~/.claude</code> folder<span class="badge">recommended</span></strong><br/>
         Walks every session JSONL plus your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
-        You'll get a sortable list of every session to pick from, with full per-source attribution.
+        You'll get a sortable list of every session grouped by project, with full per-source attribution.
       </li>
       <li>
-        <strong>A specific project folder under <code>projects/</code></strong><br/>
+        <strong>A specific project folder under <code>~/.claude/projects/</code></strong><br/>
         Only that project's sessions appear in the list. <code>CLAUDE.md</code> and skill attribution
         stay empty because those configs live one level up.
       </li>
     </ul>
 
     <div class="meta">
-      Folder lives at <code>%USERPROFILE%\.claude</code> (Windows) / <code>~/.claude</code> (macOS, Linux).
+      Folder lives at <code>%USERPROFILE%\.claude</code> (Windows) or <code>~/.claude</code> (macOS, Linux).
       Browsers can't auto-navigate to a specific path for security reasons; on Chrome/Edge, the picker
-      remembers your last location after the first pick. A single <code>.jsonl</code> file also works
-      — it gives the most basic view.
+      remembers your last location so the second pick onwards is one click.
     </div>
 
     <div class="session-picker" id="session-picker" hidden>
