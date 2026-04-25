@@ -1,77 +1,240 @@
 # cc-debrief
 
-Post-session debrief for Claude Code transcripts.
+> Post-session debrief for Claude Code transcripts. Find out where every token went — and what to change next session.
 
-`ccusage` tells you how much you spent. `cc-debrief` tells you *where* — which CLAUDE.md, which skill listing, which conversation history, which repeated `Read` of which file, where idle gaps expired the prompt cache — and what to do about it next session.
+[`ccusage`](https://github.com/ryoppippi/ccusage) tells you **how much** you spent. `cc-debrief` tells you **where** — which `CLAUDE.md`, which loaded skill, which conversation history, which repeated `Read` of which file, where idle gaps expired the prompt cache — and gives you a personalised checklist of things to change.
 
-## Two ways to use it
+100% local. No LLM calls. No API key. No internet. Your transcripts never leave your machine.
 
-### CLI (terminal users)
+---
+
+## What you'll see
+
+After running it on a real long session:
 
 ```
-npx cc-debrief <session.jsonl>          # no install
-# or
+$ cc-debrief ~/.claude/projects/myrepo/abc123.jsonl
+records parsed:  18,354
+session cwd:     /home/me/repo/myrepo
+turns:           4167
+input tokens:    2,083,624,211
+output tokens:   561,634
+cache hit rate:  99.3%
+total cost:      $3580.85
+
+top tools by token volume:
+  Read                 566,101 tok   891 calls  (mean 635)
+  Agent                115,240 tok    59 calls  (mean 1,953)
+  Grep                  81,061 tok   560 calls  (mean 145)
+  ...
+
+repeated calls (~570,478 tok wasted on calls 2..N):
+   155×    36,838 tok  src/database/database.ts
+   131×    27,336 tok  src/app/conversations/ConversationsTable.tsx
+    81×    26,050 tok  src/app/analyses/PhaseEditor.tsx
+   221×    25,334 tok  Bash: cd
+
+report written:  ./report.html
+```
+
+The HTML report opens with this hero panel:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  $3641                            ~$2864                 │
+│  Total cost (incl. subagents)     saveable on Sonnet    │
+│                                                          │
+│  9d 4h · 4,167 turns · 99.3% cache hits · 39 subagents  │
+└─────────────────────────────────────────────────────────┘
+```
+
+…and the **Insights** panel auto-generates findings like:
+
+> ! `database.ts` was touched 155× for 36,838 total tokens. ~36,600 of those were avoidable redundant input.
+> &nbsp;&nbsp;→ *Pin "database.ts" in your project CLAUDE.md, or use a dedupe-aware MCP server.*
+>
+> ! 76 idle gaps exceeded 5 minutes (max 50h 3m). Each one likely expired the prompt cache.
+> &nbsp;&nbsp;→ *For long breaks, prefer /clear and a fresh session over resuming.*
+>
+> ○ If this entire session had run on Sonnet instead of Opus, est. cost would have been ~$717.01 vs $3580.85 (~$2863.84 saved).
+> &nbsp;&nbsp;→ *Run /model sonnet at session start.*
+>
+> ! Hidden subagent cost: 39 subagents ran 482 internal turns costing ~$60.53 (1.7% of grand total).
+
+…plus a **Next session — things to try** card with up to 5 actions ranked by impact, each carrying a copy-paste snippet:
+
+```
+1. Default to Sonnet at session start
+   Pattern: Opus ran the session, but ~$2864 (80%) would have been
+            avoided on Sonnet.
+   →  /model sonnet
+      // or in <project>/.claude/settings.json:
+      { "model": "claude-sonnet-4-6" }
+   ▸ Impact: ~$2864 per session of similar size.
+
+2. Pin your hot files in CLAUDE.md
+   Pattern: 5 files were read 10+ times — top: database.ts (155×).
+   →  ## Hot files
+      - [database.ts](src/database/database.ts)
+      - [ConversationsTable.tsx](src/app/.../ConversationsTable.tsx)
+      ...
+   ▸ Impact: ~570,478 tokens saved per session of similar shape.
+```
+
+Charts cover token attribution by source per turn, repeated-read heatmap, idle-gap histogram, and the rest.
+
+---
+
+## Quick start
+
+Two ways to use it. Both produce the same report. Both run locally.
+
+### CLI (terminal)
+
+```bash
+npx cc-debrief ~/.claude/projects/<project>/<session>.jsonl
+# generates report.html in the current directory
+open report.html
+```
+
+Or install globally:
+
+```bash
 npm install -g cc-debrief
-cc-debrief <session.jsonl> [--out report.html]
+cc-debrief <session.jsonl> --out my-report.html
 ```
-
-Generates a self-contained `report.html` in the current directory.
 
 ### Web (drag-and-drop)
 
-```
+```bash
+git clone https://github.com/MichaelSourbron/cc-debrief.git
+cd cc-debrief
 npm install
 npm run build:web
-start web/dist/index.html         # double-click, or open with any browser
+open web/dist/index.html        # or just double-click it
 ```
 
-Drop a `.jsonl` onto the page and the same report renders in-browser.
-For full attribution (CLAUDE.md + skill listing), pick your `.claude/`
-folder via the "Choose .claude/ folder" button — modern browsers walk
-the directory client-side. Nothing is uploaded anywhere.
+Drop a `.jsonl` onto the page. The same report renders in your browser.
 
-Both produce identical reports because they share the same `core/` parsing + analysis + render code.
+For full attribution (CLAUDE.md + skill listing), click **"Choose .claude/ folder"** and pick:
 
-Session JSONL files live at `~/.claude/projects/<project>/<session>.jsonl` (Linux/macOS) or `%USERPROFILE%\.claude\projects\<project>\<session>.jsonl` (Windows).
+- a single `.jsonl` — basic attribution
+- a project folder (`~/.claude/projects/<project>/`) — all that project's sessions; you'll get a list to pick from
+- your whole `~/.claude/` folder — every session, plus CLAUDE.md and skill attribution
 
-### Deploy the web version
+On Chrome/Edge the picker remembers your last location, so the second pick onwards is one click. Browsers can't auto-navigate to a specific path for security reasons, so the first pick is manual.
 
-The `web/dist/` directory after `npm run build:web` is two static files (~64 KB total). Drop them on any static host:
-
-- **GitHub Pages**: copy `web/dist/*` into a `docs/` folder on `main`, enable Pages → "Deploy from branch: main /docs". Live at `https://<user>.github.io/cc-debrief/`.
-- **Cloudflare Pages / Netlify / Vercel**: connect the repo, set build command `npm run build:web`, output dir `web/dist`. Auto-deploys on every push.
+---
 
 ## What the report shows
 
-- **Hero** — the headline number, the biggest opportunity, and a one-line tagline of the session.
-- **Stat strip** — turns, total cost, input/output tokens, cache hit rate, model switches, wall-clock span, idle gaps over 5 minutes.
-- **Insights panel** — auto-generated findings with action items: most expensive turn, top tool, repeated-read warnings, idle-gap warnings, model-switch warnings, /compact events, API errors, cache TTL mix, hidden subagent cost.
-- **Next session — things to try** — a personalized checklist of up to 5 actions for *this* session, each with a copy-paste snippet (CLAUDE.md, settings.json, slash command) and an estimated impact.
-- **Top 10 most expensive turns** — sortable table with the user prompt that triggered each turn, the tools called, and an expandable assistant reply preview.
-- **Focus turn — token attribution** — treemap of source breakdown for the most expensive turn (CLAUDE.md, skill listing, conversation history, this-turn input, system prompt + tool schemas residual).
-- **Token waste from repeated calls** — ranked bars: hot files (read/edit/write multiple times) and Bash commands run multiple times.
-- **Tool result tokens by tool** — horizontal bar chart, hover for mean / max per call.
-- **Time between turns** — histogram bucketed by gap size, with cache-expiry-relevant gaps colored red.
-- **Token attribution across turns** — stacked area, bucketed for long sessions.
-- **Tokens per turn** — stacked bar (cache_read / cache_creation / new input / output), bucketed for long sessions.
-- **Cost vs cache hit rate** — dual-axis bars + line.
+| Section | What you learn |
+|---|---|
+| **Hero** | The headline number + biggest opportunity, in one glance. |
+| **Stat strip** | Turns, total cost, input/output tokens, cache hit rate, model switches, wall-clock span, idle gaps over 5 minutes. |
+| **Insights** | Auto-generated findings with `→` action items: most expensive turn, top tool, repeated reads, idle gaps, model switches, /compact events, API errors, cache TTL mix, hidden subagent cost. |
+| **Next session — things to try** | Up to 5 personalised action items with copy-paste snippets and estimated impact. Each session triggers different rules. |
+| **Top 10 most expensive turns** | Sortable table with the user prompt that triggered each turn, the tools called, and an expandable assistant reply preview. |
+| **Focus turn — token attribution** | Treemap of source breakdown for the most expensive turn. |
+| **Token waste from repeated calls** | Ranked bars: hot files (read/edit/write multiple times) and Bash commands run multiple times. |
+| **Tool result tokens by tool** | Horizontal bar; hover for mean / max per call. |
+| **Time between turns** | Histogram bucketed by gap size, with cache-expiry-relevant gaps colored red. |
+| **Token attribution across turns** | Stacked area, bucketed for long sessions. |
+| **Tokens per turn** | Stacked bar (cache_read / cache_creation / new input / output). |
+| **Cost vs cache hit rate** | Dual-axis bars + line. |
 
-## What attribution covers
+---
 
-Per-turn input tokens are attributed to:
+## How attribution works
 
-- `CLAUDE.md` (user-level + project-level, tokenized once at session start).
-- `Skill listing` — name + description per enabled skill (full skill bodies show up in conversation history if invoked).
-- `Conversation history` — sum of prior message + tool_result content.
-- `This turn — user message` and `This turn — tool results` — new content this turn introduced.
-- `System prompt + tool schemas (residual)` — total minus everything above.
+Per-turn input tokens are split across:
 
-Token counts use a `chars / 3.5` BPE estimate for speed; the API-reported `input_tokens` is exact and absorbs the residual error. Pricing applies the correct 5m vs 1h TTL rates for cache writes.
+- **`CLAUDE.md`** — user-level + project-level, tokenized once at session start.
+- **`Skill listing`** — name + description per enabled skill (full skill bodies show up in conversation history if invoked).
+- **`Conversation history`** — sum of prior message + tool_result content.
+- **`This turn — user message`** and **`This turn — tool results`** — new content this turn introduced.
+- **`System prompt + tool schemas (residual)`** — total minus everything above.
+
+Token counts use a `chars / 3.5` BPE estimate for speed; the API-reported `input_tokens` is exact and absorbs the residual error. Pricing applies the correct **5-minute vs 1-hour TTL rates** for cache writes (5m = 1.25× input, 1h = 2× input — the 1h tier is more expensive but persists longer).
+
+---
 
 ## Privacy
 
-Runs entirely locally. No LLM calls, no internet, no API key. Your transcripts and the generated `report.html` stay on your machine.
+`cc-debrief` runs **entirely locally**:
+
+- No LLM calls. The analysis is rule-based, ~100ms per session.
+- No API key required.
+- No internet connection used.
+- Your transcripts and the generated `report.html` stay on your machine.
+
+The web version has the same privacy guarantee — `FileReader` + `showDirectoryPicker` keep everything client-side. Nothing is uploaded to any server.
+
+---
+
+## Deploy the web version
+
+After `npm run build:web`, the `web/dist/` directory contains two static files (~64 KB total). Drop them on any static host:
+
+| Host | Setup |
+|---|---|
+| **GitHub Pages** | Move `web/dist/*` into `docs/`, push, enable Pages from `main /docs`. |
+| **Cloudflare Pages** | Connect repo, build command `npm run build:web`, output dir `web/dist`. |
+| **Netlify / Vercel** | Same — connect repo, set build command and output dir. |
+
+All free, all auto-deploy on push.
+
+---
+
+## Architecture
+
+```
+core/                  pure TS, no Node imports → runs in Node and browser
+├── parser.ts          JSONL → typed turns, attribution, all analyzers
+├── tokenize.ts        chars/3.5 estimate
+└── render.ts          analyzed data → ECharts option objects + recs
+
+cli/                   Node entry — uses fs to read transcripts and write HTML
+├── index.ts
+└── template.html
+
+web/                   browser entry — uses File API, renders into the DOM
+├── index.html
+└── main.ts            (esbuild bundles to web/dist/main.js)
+
+scripts/
+├── build-web.mjs      esbuild step for the web bundle
+└── copy-assets.mjs    copies template.html into the CLI's dist
+```
+
+The CLI and web entry points are **thin wrappers** — both call into the same `core/` for parsing, analysis, and rendering. Adding a feature once benefits both modes.
+
+---
+
+## What it detects
+
+Eleven distinct patterns, each with a copy-paste fix:
+
+1. **Repeated-call detection** — files / commands invoked many times that could be cached or pinned.
+2. **Idle-gap analysis** — gaps over 5 minutes that expire the prompt cache.
+3. **Cache TTL split** — 5m vs 1h cache writes.
+4. **API errors** — 529 capacity overloads, network failures.
+5. **Compaction events** — auto-compactions and how full the context was.
+6. **Model-routing recommendations** — what a session would have cost on Sonnet/Haiku.
+7. **Subagent cost attribution** — hidden cost of `Agent` calls' internal turns.
+8. **Unused enabled skills** — skill listings consuming tokens for skills you never invoke.
+9. **Correction-loop detection** — repeated "no", "still wrong", "fix it" prompts that signal a stuck session.
+10. **Over-specified CLAUDE.md** — > 5K tokens, likely getting ignored.
+11. **Plan Mode usage** — flags long sessions that didn't use plan mode.
+
+---
 
 ## License
 
 MIT — see [LICENSE](./LICENSE).
+
+---
+
+## Contributing
+
+Issues and pull requests welcome at [github.com/MichaelSourbron/cc-debrief](https://github.com/MichaelSourbron/cc-debrief).
