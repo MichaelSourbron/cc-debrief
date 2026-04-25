@@ -187,7 +187,14 @@
     margin: 16px 0 0;
     text-align: left;
   }
-  .session-picker h3 { margin: 0 0 12px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .session-picker h3 { margin: 0 0 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .session-picker .picker-hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; line-height: 1.5; }
+  .session-picker .picker-hint .kbd {
+    display: inline-block; min-width: 16px; padding: 0 5px;
+    background: #1c2128; border: 1px solid var(--border); border-radius: 3px;
+    font: 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--muted); text-align: center; vertical-align: 1px;
+  }
   .session-picker ol { margin: 0; padding: 0; list-style: none; }
   .session-picker li {
     padding: 10px 12px;
@@ -208,12 +215,21 @@
   .session-picker .proj-header {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px; cursor: pointer; user-select: none;
+    border-radius: 6px;
   }
-  .session-picker .proj-header:hover { background: #1c2128; border-radius: 6px 6px 0 0; }
-  .session-picker .proj-chev { color: var(--muted); width: 12px; flex-shrink: 0; transition: transform 0.15s; }
-  .session-picker .proj-group.expanded .proj-chev { transform: rotate(90deg); }
+  .session-picker .proj-header:hover { background: #1c2128; }
   .session-picker .proj-name { color: var(--fg); font-weight: 600; font-size: 13px; flex-shrink: 0; }
   .session-picker .proj-meta { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .session-picker .proj-toggle {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    width: 26px; height: 26px; padding: 0; margin-left: 8px;
+    border-radius: 4px; cursor: pointer; flex-shrink: 0;
+    transition: background 0.12s, transform 0.15s, border-color 0.12s, color 0.12s;
+    font: 12px/1 inherit;
+  }
+  .session-picker .proj-toggle:empty { visibility: hidden; }
+  .session-picker .proj-toggle:hover { background: #1c2128; color: var(--accent); border-color: var(--accent); }
+  .session-picker .proj-group.expanded .proj-toggle { transform: rotate(90deg); color: var(--accent); border-color: var(--accent); }
   .session-picker .proj-sessions {
     margin: 0; padding: 4px 8px 8px 32px; list-style: none;
     border-top: 1px solid var(--border);
@@ -381,6 +397,9 @@
 
     <div class="session-picker" id="session-picker" hidden>
       <h3>Multiple sessions — pick one</h3>
+      <p class="picker-hint">
+        Click a project to load its most recent session, or click <span class="kbd">▸</span> to see all sessions for that project.
+      </p>
       <ol id="session-list"></ol>
     </div>
 

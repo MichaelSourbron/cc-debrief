@@ -691,16 +691,22 @@ function renderGroupedList(
           );
         })
         .join("");
+      const expandTitle =
+        g.sessions.length === 1
+          ? "single session"
+          : `show all ${g.sessions.length} sessions`;
       return (
         '<li class="proj-group" data-g="' + gi + '">' +
-        '<div class="proj-header" data-g="' + gi + '">' +
-        '<span class="proj-chev">▸</span>' +
+        '<div class="proj-header" data-g="' + gi + '" title="Click to load most recent session">' +
         '<span class="proj-name">' + escapeHtml(g.project) + '</span>' +
         '<span class="proj-meta">' +
         g.sessions.length + " session" + (g.sessions.length === 1 ? "" : "s") +
         " · " + fmtSize(g.totalBytes) +
         " · last " + fmtAgo(g.latestMs) +
         '</span>' +
+        '<button type="button" class="proj-toggle" data-g="' + gi + '" title="' + expandTitle + '" aria-label="' + expandTitle + '">' +
+        (g.sessions.length === 1 ? "" : "▸") +
+        '</button>' +
         '</div>' +
         '<ul class="proj-sessions" hidden>' + sessionRows + '</ul>' +
         '</li>'
@@ -708,17 +714,33 @@ function renderGroupedList(
     })
     .join("");
 
-  // Expand/collapse project headers.
+  // Click anywhere on the header (except the chevron) → load that project's
+  // most recent session immediately.
   ol.querySelectorAll<HTMLElement>(".proj-header").forEach((h) => {
-    h.addEventListener("click", () => {
-      const li = h.closest<HTMLElement>(".proj-group")!;
+    h.addEventListener("click", async (e) => {
+      if ((e.target as HTMLElement).closest(".proj-toggle")) return;
+      const gi = Number(h.getAttribute("data-g"));
+      const mostRecent = groups[gi].sessions[0];
+      hideSessionPicker();
+      await processInput(mostRecent.file, allPairs).catch((err) =>
+        setError(String(err?.message ?? err)),
+      );
+    });
+  });
+  // Chevron button → toggle expand to see all sessions for that project.
+  ol.querySelectorAll<HTMLElement>(".proj-toggle").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const li = btn.closest<HTMLElement>(".proj-group")!;
       const sublist = li.querySelector<HTMLElement>(".proj-sessions")!;
+      // Single-session groups have no expand affordance.
+      if (sublist.children.length <= 1) return;
       const open = !sublist.hidden;
       sublist.hidden = open;
       li.classList.toggle("expanded", !open);
     });
   });
-  // Click a session row → load it.
+  // Click a session row inside an expanded project → load it.
   ol.querySelectorAll<HTMLElement>("li.row").forEach((li) => {
     li.addEventListener("click", async (e) => {
       e.stopPropagation();
