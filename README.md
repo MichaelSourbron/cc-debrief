@@ -2,6 +2,8 @@
 
 > Post-session debrief for Claude Code transcripts. Find out where every token went — and what to change next session.
 
+**Live web app: [michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)** — drag-drop a session JSONL, see the report, no install.
+
 [`ccusage`](https://github.com/ryoppippi/ccusage) tells you **how much** you spent. `cc-debrief` tells you **where** — which `CLAUDE.md`, which loaded skill, which conversation history, which repeated `Read` of which file, where idle gaps expired the prompt cache — and gives you a personalised checklist of things to change.
 
 100% local. No LLM calls. No API key. No internet. Your transcripts never leave your machine.
@@ -106,6 +108,14 @@ cc-debrief <session.jsonl> --out my-report.html
 
 ### Web (drag-and-drop)
 
+**No install** — open the hosted version:
+
+> **[michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)**
+
+Drop a `.jsonl` onto the page (or pick your `.claude/` folder for full attribution). The same report renders in your browser. Nothing is uploaded — every byte of parsing happens client-side via `FileReader` + `showDirectoryPicker`.
+
+To run it locally instead:
+
 ```bash
 git clone https://github.com/MichaelSourbron/cc-debrief.git
 cd cc-debrief
@@ -113,8 +123,6 @@ npm install
 npm run build:web
 open web/dist/index.html        # or just double-click it
 ```
-
-Drop a `.jsonl` onto the page. The same report renders in your browser.
 
 For full attribution (CLAUDE.md + skill listing), click **"Choose .claude/ folder"** and pick:
 
