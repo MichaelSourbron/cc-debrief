@@ -416,9 +416,36 @@ async function processInput(jsonlFile: File, configPairs: FilePathPair[]): Promi
   const records = parseJsonl(text);
   const sessionCwd = findSessionCwd(records);
   const sources = await buildSourcesFromPairs(configPairs, sessionCwd);
+  await renderFromRecords(records, sources, jsonlFile.name);
+}
+
+async function processProjectCombined(
+  sessions: FilePathPair[],
+  projectName: string,
+  configPairs: FilePathPair[],
+): Promise<void> {
+  setError("");
+  // Read sessions in chronological order so timestamps stay monotonic.
+  const sorted = [...sessions].sort((a, b) => a.file.lastModified - b.file.lastModified);
+  const allRecords: unknown[] = [];
+  for (const sess of sorted) {
+    const text = await sess.file.text();
+    allRecords.push(...parseJsonl(text));
+  }
+  const sessionCwd = findSessionCwd(allRecords);
+  const sources = await buildSourcesFromPairs(configPairs, sessionCwd);
+  const label = `${projectName} — ${sessions.length} combined sessions`;
+  await renderFromRecords(allRecords, sources, label);
+}
+
+async function renderFromRecords(
+  records: unknown[],
+  sources: IndexedSources,
+  sourceLabel: string,
+): Promise<void> {
   const turns = buildTurns(records, sources);
   if (turns.length === 0) {
-    setError("No assistant turns with usage blocks found in this file.");
+    setError("No assistant turns with usage blocks found.");
     return;
   }
   const toolStats = analyzeToolUsage(records);
@@ -445,7 +472,7 @@ async function processInput(jsonlFile: File, configPairs: FilePathPair[]): Promi
     corrections,
   );
 
-  document.getElementById("source-path")!.textContent = jsonlFile.name;
+  document.getElementById("source-path")!.textContent = sourceLabel;
   renderHero(data.hero);
   renderStrip(data.topStrip);
   renderInsights(data.insights);
@@ -691,21 +718,25 @@ function renderGroupedList(
           );
         })
         .join("");
-      const expandTitle =
-        g.sessions.length === 1
-          ? "single session"
-          : `show all ${g.sessions.length} sessions`;
+      const multi = g.sessions.length > 1;
+      const expandTitle = multi ? `show all ${g.sessions.length} sessions` : "single session";
+      const allTitle = multi
+        ? `combine all ${g.sessions.length} sessions into one report`
+        : "";
       return (
         '<li class="proj-group" data-g="' + gi + '">' +
         '<div class="proj-header" data-g="' + gi + '" title="Click to load most recent session">' +
         '<span class="proj-name">' + escapeHtml(g.project) + '</span>' +
         '<span class="proj-meta">' +
-        g.sessions.length + " session" + (g.sessions.length === 1 ? "" : "s") +
+        g.sessions.length + " session" + (multi ? "s" : "") +
         " · " + fmtSize(g.totalBytes) +
         " · last " + fmtAgo(g.latestMs) +
         '</span>' +
+        (multi
+          ? '<button type="button" class="proj-loadall" data-g="' + gi + '" title="' + allTitle + '" aria-label="' + allTitle + '">all</button>'
+          : "") +
         '<button type="button" class="proj-toggle" data-g="' + gi + '" title="' + expandTitle + '" aria-label="' + expandTitle + '">' +
-        (g.sessions.length === 1 ? "" : "▸") +
+        (multi ? "▸" : "") +
         '</button>' +
         '</div>' +
         '<ul class="proj-sessions" hidden>' + sessionRows + '</ul>' +
@@ -714,11 +745,12 @@ function renderGroupedList(
     })
     .join("");
 
-  // Click anywhere on the header (except the chevron) → load that project's
-  // most recent session immediately.
+  // Click anywhere on the header (except the action buttons) → load that
+  // project's most recent session immediately.
   ol.querySelectorAll<HTMLElement>(".proj-header").forEach((h) => {
     h.addEventListener("click", async (e) => {
-      if ((e.target as HTMLElement).closest(".proj-toggle")) return;
+      const t = e.target as HTMLElement;
+      if (t.closest(".proj-toggle") || t.closest(".proj-loadall")) return;
       const gi = Number(h.getAttribute("data-g"));
       const mostRecent = groups[gi].sessions[0];
       hideSessionPicker();
@@ -727,13 +759,24 @@ function renderGroupedList(
       );
     });
   });
-  // Chevron button → toggle expand to see all sessions for that project.
+  // "all" button → combine all of the project's sessions into one report.
+  ol.querySelectorAll<HTMLElement>(".proj-loadall").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const gi = Number(btn.getAttribute("data-g"));
+      const g = groups[gi];
+      hideSessionPicker();
+      await processProjectCombined(g.sessions, g.project, allPairs).catch((err) =>
+        setError(String(err?.message ?? err)),
+      );
+    });
+  });
+  // Chevron → toggle expand to see all sessions for that project.
   ol.querySelectorAll<HTMLElement>(".proj-toggle").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       const li = btn.closest<HTMLElement>(".proj-group")!;
       const sublist = li.querySelector<HTMLElement>(".proj-sessions")!;
-      // Single-session groups have no expand affordance.
       if (sublist.children.length <= 1) return;
       const open = !sublist.hidden;
       sublist.hidden = open;
