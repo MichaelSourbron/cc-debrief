@@ -713,6 +713,81 @@ function generateInsights(
     });
   }
 
+  // Read:Edit ratio — high ratio = lots of exploration, little writing.
+  const readStat2 = toolStats.find((t) => t.name === "Read");
+  const editStat = toolStats.find((t) => t.name === "Edit");
+  const writeStat = toolStats.find((t) => t.name === "Write");
+  const reads = readStat2?.calls ?? 0;
+  const writes = (editStat?.calls ?? 0) + (writeStat?.calls ?? 0);
+  if (reads >= 20 && writes > 0) {
+    const ratio = reads / writes;
+    if (ratio >= 5) {
+      out.push({
+        level: ratio >= 10 ? "warn" : "info",
+        text: `Read:Edit ratio is ${ratio.toFixed(1)}× (${reads} Reads, ${writes} Edits/Writes). High ratio = lots of exploration without writing — common when the agent is hunting for something instead of being told where to look.`,
+        action:
+          'Pin the relevant files in CLAUDE.md, or front-load the user prompt with explicit file paths instead of "find where X is defined".',
+      });
+    }
+  }
+
+  // stop_reason distribution — flag truncations and server-tool pauses.
+  const stopCounts = new Map<string, number>();
+  for (const t of turns) stopCounts.set(t.stopReason, (stopCounts.get(t.stopReason) ?? 0) + 1);
+  const maxTokensTurns = stopCounts.get("max_tokens") ?? 0;
+  const pauseTurns = stopCounts.get("pause_turn") ?? 0;
+  if (maxTokensTurns > 0) {
+    out.push({
+      level: "warn",
+      text: `${maxTokensTurns} turn${maxTokensTurns === 1 ? "" : "s"} hit max_tokens (response truncated). Truncated responses are billed in full and often need a follow-up turn to continue, doubling the cost.`,
+      action:
+        "Either raise max_tokens for the relevant turns, or break complex requests into smaller sub-tasks the model can answer in one go.",
+    });
+  }
+  if (pauseTurns > 0) {
+    out.push({
+      level: "info",
+      text: `${pauseTurns} turn${pauseTurns === 1 ? "" : "s"} paused on server-tool iteration limit (default 10 iterations for Agent / WebSearch). Server-side sampling loop hit its cap and returned partial results.`,
+    });
+  }
+
+  // Per-model cost split — useful when sessions mix Opus and Sonnet/Haiku.
+  if (turns.length >= 5) {
+    const byModel = new Map<string, { calls: number; cost: number }>();
+    for (const t of turns) {
+      const cur = byModel.get(t.model) ?? { calls: 0, cost: 0 };
+      cur.calls += 1;
+      cur.cost += t.costUsd;
+      byModel.set(t.model, cur);
+    }
+    const ranked = [...byModel.entries()].sort((a, b) => b[1].cost - a[1].cost);
+    if (ranked.length >= 2) {
+      const totalCost = ranked.reduce((s, [, v]) => s + v.cost, 0);
+      const breakdown = ranked
+        .map(([m, v]) => `${m.replace(/^claude-/, "")} $${v.cost.toFixed(2)} (${v.calls})`)
+        .join(", ");
+      out.push({
+        level: "info",
+        text: `Cost by model: ${breakdown}. Total $${totalCost.toFixed(2)} across ${ranked.length} models.`,
+      });
+    }
+  }
+
+  // Thinking-block output — extended thinking adds real output tokens.
+  const totalOutput = turns.reduce((s, t) => s + t.usage.outputTokens, 0);
+  const totalThinking = turns.reduce((s, t) => s + t.thinkingOutputTokens, 0);
+  if (totalThinking > 1000 && totalOutput > 0) {
+    const pct = (totalThinking / totalOutput) * 100;
+    out.push({
+      level: pct > 50 ? "warn" : "info",
+      text: `Extended thinking output: ~${totalThinking.toLocaleString("en-US")} tokens (${pct.toFixed(0)}% of total output). Thinking blocks are billed at the output rate AND accumulate in conversation history, so they're paid for again on every subsequent turn at cache-read rate.`,
+      action:
+        pct > 50
+          ? "Lower the effort level (or disable extended thinking) for routine work; reserve high effort for genuinely complex steps."
+          : undefined,
+    });
+  }
+
   if (compactions.length > 0) {
     const where = compactions
       .map((c) => `turn #${c.afterTurnIndex ?? "?"} (${c.preTokens.toLocaleString("en-US")} tok pre)`)

@@ -336,6 +336,23 @@ Eleven distinct patterns, each with a copy-paste fix:
 
 ---
 
+## How does this compare to Claude Code's built-in `/insights`?
+
+In April 2026 Claude Code shipped a built-in `/insights` slash command that also generates an HTML session report. The two tools are complementary, not redundant — different shape, different cost model, different use cases.
+
+| | `/insights` (built-in) | `cc-debrief` (this tool) |
+|---|---|---|
+| **Engine** | Haiku LLM | pure deterministic |
+| **Token cost** | charges your subscription | zero |
+| **Privacy** | sends sessions through API | 100% local |
+| **Scope** | last 30 days of sessions | one session OR cross-session combined |
+| **Strengths** | qualitative (sentiment, frustration, themes) | quantitative (cache TTL, subagent split, repeated calls, idle gaps) |
+| **Weaknesses** | costs tokens; requires API access | no qualitative analysis |
+
+Use `/insights` when you want an LLM to read your sessions and surface emotional / behavioural patterns ("you keep getting frustrated around test failures"). Use `cc-debrief` when you want exact token math, cross-session aggregates, or a privacy-pure report you can share with a teammate without sending anything to the API.
+
+---
+
 ## Acknowledgments
 
 Built for use with Anthropic's [Claude Code](https://www.anthropic.com/claude-code). This is an independent, unofficial third-party project — not endorsed by or affiliated with Anthropic. The JSONL transcript format and pricing model used in this report follow the public docs at [docs.claude.com](https://docs.claude.com) and the Anthropic blog.

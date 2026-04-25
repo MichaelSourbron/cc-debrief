@@ -38,6 +38,8 @@ export type Turn = {
   userPromptPreview: string;
   assistantTextPreview: string;
   toolsCalled: string[];
+  stopReason: string;
+  thinkingOutputTokens: number;
 };
 
 export type IndexedSources = {
@@ -124,9 +126,15 @@ function asRecord(v: unknown): MaybeRecord {
 }
 
 // Pull all text-ish content out of a record so we can tokenize it.
-// Handles strings, content[] arrays of text/thinking/tool_use/tool_result blocks.
-function extractText(record: unknown): { user: string; toolResult: string; assistant: string } {
-  const out = { user: "", toolResult: "", assistant: "" };
+// Splits assistant content into text vs thinking so we can attribute the
+// thinking-output cost separately.
+function extractText(record: unknown): {
+  user: string;
+  toolResult: string;
+  assistantText: string;
+  assistantThinking: string;
+} {
+  const out = { user: "", toolResult: "", assistantText: "", assistantThinking: "" };
   const r = asRecord(record);
   if (!r) return out;
   const m = asRecord(r.message);
@@ -134,18 +142,23 @@ function extractText(record: unknown): { user: string; toolResult: string; assis
   const role = m.role;
   const content = m.content;
 
-  const collect = (block: unknown, into: "user" | "toolResult" | "assistant") => {
+  const collectAssistant = (block: unknown) => {
+    const b = asRecord(block);
+    if (!b) return;
+    if (b.type === "text" && typeof b.text === "string") out.assistantText += b.text;
+    else if (b.type === "thinking" && typeof b.thinking === "string")
+      out.assistantThinking += b.thinking;
+    else if (b.type === "tool_use") out.assistantText += JSON.stringify(b.input ?? "");
+  };
+  const collectUser = (block: unknown) => {
     if (typeof block === "string") {
-      out[into] += block;
+      out.user += block;
       return;
     }
     const b = asRecord(block);
     if (!b) return;
-    const t = b.type;
-    if (t === "text" && typeof b.text === "string") out[into] += b.text;
-    else if (t === "thinking" && typeof b.thinking === "string") out[into] += b.thinking;
-    else if (t === "tool_use") out[into] += JSON.stringify(b.input ?? "");
-    else if (t === "tool_result") {
+    if (b.type === "text" && typeof b.text === "string") out.user += b.text;
+    else if (b.type === "tool_result") {
       const c = b.content;
       if (typeof c === "string") out.toolResult += c;
       else if (Array.isArray(c)) {
@@ -158,11 +171,11 @@ function extractText(record: unknown): { user: string; toolResult: string; assis
   };
 
   if (typeof content === "string") {
-    if (role === "assistant") out.assistant += content;
+    if (role === "assistant") out.assistantText += content;
     else out.user += content;
   } else if (Array.isArray(content)) {
-    const target = role === "assistant" ? "assistant" : "user";
-    for (const block of content) collect(block, target);
+    if (role === "assistant") for (const b of content) collectAssistant(b);
+    else for (const b of content) collectUser(b);
   }
   return out;
 }
@@ -175,6 +188,7 @@ type RawAssistantRecord = {
   requestId?: string;
   message: {
     model: string;
+    stop_reason?: string;
     usage: {
       input_tokens?: number;
       cache_creation_input_tokens?: number;
@@ -850,17 +864,20 @@ export function buildTurns(records: unknown[], config: IndexedSources): Turn[] {
   const seenRequestIds = new Set<string>();
 
   // Tokenize every record's content once; we'll re-use these counts.
-  // tokensByIndex[i] = {user, toolResult, assistant} token counts for records[i].
-  const tokensByIndex: { user: number; toolResult: number; assistant: number }[] = records.map(
-    (r) => {
-      const t = extractText(r);
-      return {
-        user: t.user ? tokenCount(t.user) : 0,
-        toolResult: t.toolResult ? tokenCount(t.toolResult) : 0,
-        assistant: t.assistant ? tokenCount(t.assistant) : 0,
-      };
-    },
-  );
+  const tokensByIndex: {
+    user: number;
+    toolResult: number;
+    assistantText: number;
+    assistantThinking: number;
+  }[] = records.map((r) => {
+    const t = extractText(r);
+    return {
+      user: t.user ? tokenCount(t.user) : 0,
+      toolResult: t.toolResult ? tokenCount(t.toolResult) : 0,
+      assistantText: t.assistantText ? tokenCount(t.assistantText) : 0,
+      assistantThinking: t.assistantThinking ? tokenCount(t.assistantThinking) : 0,
+    };
+  });
 
   let historyTokens = 0;
   let pendingUserTokens = 0;
@@ -888,7 +905,7 @@ export function buildTurns(records: unknown[], config: IndexedSources): Turn[] {
         // Even on dedupe, fold this assistant's content into history so it
         // counts for the next turn — but only once. Track separately to avoid
         // double-counting; simplest: merge here and skip turn creation.
-        historyTokens += t.assistant;
+        historyTokens += t.assistantText + t.assistantThinking;
         continue;
       }
       seenRequestIds.add(r.requestId);
@@ -925,10 +942,17 @@ export function buildTurns(records: unknown[], config: IndexedSources): Turn[] {
       userPromptPreview: clip(pendingUserText || "(continuation)", 200),
       assistantTextPreview: clip(summary.text, 200),
       toolsCalled: summary.tools,
+      stopReason: typeof r.message.stop_reason === "string" ? r.message.stop_reason : "(none)",
+      // Thinking output is often redacted by Anthropic in the JSONL (only the
+      // signature is stored), so directly tokenizing thinking blocks yields 0
+      // even when the model actually thought. Estimate as residual: total
+      // output_tokens reported by the API minus the visible text+tool_use
+      // tokens we can measure.
+      thinkingOutputTokens: Math.max(0, usage.outputTokens - t.assistantText),
     });
 
     // Roll this turn's new input + this assistant's content into history for next turn.
-    historyTokens += pendingUserTokens + pendingToolResultTokens + t.assistant;
+    historyTokens += pendingUserTokens + pendingToolResultTokens + t.assistantText + t.assistantThinking;
     pendingUserTokens = 0;
     pendingToolResultTokens = 0;
   }
