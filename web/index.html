@@ -35,93 +35,159 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px;
+    padding: 56px 24px 24px;
   }
   body.has-data .drop { display: none; }
-  .drop h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
-  .drop .lede { color: var(--muted); font-size: 14px; max-width: 540px; line-height: 1.5; margin: 0 auto 24px; }
+  .drop-inner { width: 100%; max-width: 640px; display: flex; flex-direction: column; align-items: center; }
+  .drop .brand-mark {
+    display: inline-flex; align-items: center; gap: 10px;
+    color: var(--fg); font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+    margin-bottom: 8px;
+  }
+  .drop .brand-mark .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--good));
+    box-shadow: 0 0 12px rgba(88, 166, 255, 0.5);
+  }
+  .drop .lede { color: var(--muted); font-size: 14px; line-height: 1.55; margin: 0 0 32px; text-align: center; max-width: 560px; }
+  .drop .lede strong { color: var(--fg); }
+
   .drop-area {
     width: 100%;
-    max-width: 540px;
     border: 2px dashed var(--border);
-    border-radius: 12px;
-    padding: 40px 24px;
-    background: var(--card);
-    transition: border-color 0.15s, background 0.15s;
+    border-radius: 14px;
+    padding: 36px 28px 32px;
+    background: linear-gradient(180deg, #181d24, #14181f);
+    transition: border-color 0.18s, background 0.18s, transform 0.18s;
+    text-align: center;
   }
-  .drop-area.over { border-color: var(--accent); background: #1c2128; }
-  .drop-area p { margin: 0 0 16px; }
-  .drop-area .or { color: var(--muted); font-size: 12px; margin: 12px 0; }
+  .drop-area.over { border-color: var(--accent); background: #1c2230; transform: scale(1.005); }
+  .drop-area .primary-line { font-size: 15px; color: var(--fg); margin: 0 0 20px; }
+  .drop-area .primary-line strong { font-weight: 600; }
+  .drop-area .or {
+    color: var(--muted); font-size: 11px; margin: 22px 0 16px;
+    text-transform: uppercase; letter-spacing: 0.1em; position: relative;
+  }
+  .drop-area .or::before, .drop-area .or::after {
+    content: ""; position: absolute; top: 50%; width: 80px; height: 1px; background: var(--border);
+  }
+  .drop-area .or::before { right: calc(50% + 60px); }
+  .drop-area .or::after { left: calc(50% + 60px); }
   .drop-area .pick {
     display: inline-block;
-    padding: 8px 14px;
+    padding: 10px 20px;
     background: var(--accent);
     color: #0d1117;
-    border-radius: 6px;
-    font-weight: 600;
+    border-radius: 8px;
+    font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     cursor: pointer;
-    font-size: 13px;
+    border: none;
+    transition: transform 0.1s, box-shadow 0.1s;
+    box-shadow: 0 2px 8px rgba(88, 166, 255, 0.25);
   }
-  .drop-area .pick.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
-  .drop input[type=file] { display: none; }
-  .drop button.pick { font: inherit; border: none; }
-  .drop .hint {
-    color: var(--muted);
-    font-size: 12px;
-    max-width: 540px;
-    margin: 24px auto 0;
-    line-height: 1.6;
-  }
-  .drop .hint code {
-    background: #1c2128;
-    padding: 2px 6px;
-    border-radius: 3px;
+  .drop-area .pick:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(88, 166, 255, 0.35); }
+  .drop-area .pick.secondary {
+    background: transparent;
     color: var(--accent);
-    font: 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    border: 1px solid var(--accent);
+    box-shadow: none;
   }
-  .drop .hint-list {
-    max-width: 540px;
-    margin: 8px auto 16px;
+  .drop-area .pick.secondary:hover { background: rgba(88, 166, 255, 0.08); }
+  .drop input[type=file] { display: none; }
+
+  .hint-list {
+    width: 100%;
+    margin: 24px 0 0;
     padding: 0;
     list-style: none;
-    text-align: left;
   }
-  .drop .hint-list li {
+  .hint-list li {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 14px;
-    margin-bottom: 8px;
-    font-size: 12.5px;
-    color: var(--muted);
-    line-height: 1.5;
-  }
-  .drop .hint-list li strong { color: var(--fg); }
-  .drop .badge {
-    display: inline-block;
-    background: var(--good);
-    color: #0d1117;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 1px 6px;
     border-radius: 10px;
-    margin-left: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+    transition: border-color 0.15s;
   }
+  .hint-list li:hover { border-color: #3b424d; }
+  .hint-list li strong { color: var(--fg); display: inline-flex; align-items: center; gap: 8px; }
+  .hint-list code {
+    background: #1c2128; padding: 2px 7px; border-radius: 4px;
+    color: var(--accent); font: 12px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--good); color: #0d1117;
+    font-size: 9.5px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+
+  .drop .meta {
+    width: 100%;
+    margin: 24px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 14px 18px;
+    background: rgba(22, 27, 34, 0.5);
+    border-radius: 10px;
+    border: 1px solid #21262d;
+  }
+  .drop .meta code {
+    background: #1c2128; padding: 1px 6px; border-radius: 3px;
+    color: var(--accent); font: 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  .drop .privacy {
+    width: 100%;
+    margin: 16px 0 0;
+    padding: 14px 18px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.55;
+    background: rgba(63, 185, 80, 0.06);
+    border: 1px solid rgba(63, 185, 80, 0.25);
+    border-radius: 10px;
+  }
+  .drop .privacy strong { color: var(--good); }
+
+  .drop .err {
+    width: 100%;
+    margin-top: 14px; padding: 12px 14px;
+    color: var(--bad); font-size: 13px;
+    background: rgba(248, 81, 73, 0.07);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: 8px;
+  }
+
+  .drop-footer {
+    margin-top: 40px;
+    padding-top: 24px;
+    border-top: 1px solid #21262d;
+    width: 100%;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .drop-footer a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted var(--border); }
+  .drop-footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .drop-footer .sep { margin: 0 8px; opacity: 0.4; }
+
   .session-picker {
     width: 100%;
-    max-width: 540px;
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 16px 20px;
-    margin: 16px auto 0;
+    margin: 16px 0 0;
     text-align: left;
   }
-  .session-picker h3 { margin: 0 0 12px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 500; }
+  .session-picker h3 { margin: 0 0 12px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
   .session-picker ol { margin: 0; padding: 0; list-style: none; }
   .session-picker li {
     padding: 10px 12px;
@@ -132,19 +198,11 @@
     justify-content: space-between;
     gap: 12px;
     font-size: 13px;
+    transition: background 0.12s, border-color 0.12s;
   }
   .session-picker li:hover { background: #1c2128; border-color: var(--border); }
   .session-picker .sess-name { color: var(--fg); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
   .session-picker .sess-meta { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .drop .privacy {
-    color: var(--muted);
-    font-size: 12px;
-    max-width: 540px;
-    margin: 24px auto 0;
-    line-height: 1.5;
-  }
-  .drop .privacy strong { color: var(--good); }
-  .drop .err { color: var(--bad); margin-top: 12px; font-size: 13px; }
 
   /* Report (post-data state) — same as CLI template */
   body:not(.has-data) #report-root,
@@ -269,52 +327,62 @@
 
 <!-- Pre-data drop zone -->
 <section class="drop" id="drop-screen">
-  <h1>cc-debrief</h1>
-  <p class="lede">Post-session debrief for Claude Code transcripts. Drop a session JSONL and you'll get token attribution, repeated-call detection, idle-gap analysis, and a personalized "next session" checklist.</p>
-  <div class="drop-area" id="drop-area">
-    <p><strong>Pick your whole <code>.claude</code> folder for the full report</strong></p>
-    <button class="pick" type="button" id="folder-btn">Choose .claude/ folder</button>
-    <input type="file" id="folder-input" webkitdirectory directory multiple />
-    <div class="or">— or just a JSONL (basic attribution only) —</div>
-    <label class="pick secondary" for="file-input">Choose JSONL file</label>
-    <input type="file" id="file-input" accept=".jsonl,application/json" />
-  </div>
-  <p class="hint">
-    <strong style="color:var(--fg)">Two folders that work:</strong>
-  </p>
-  <ul class="hint-list">
-    <li>
-      <strong>The full <code>~/.claude</code> folder</strong> <span class="badge">recommended</span><br/>
-      Walks every session JSONL plus your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
-      You get a sortable list of every session to pick from, with full per-source attribution.
-    </li>
-    <li>
-      <strong>A specific project folder</strong> under <code>~/.claude/projects/&lt;project&gt;/</code><br/>
-      Only that project's sessions appear in the list. CLAUDE.md and skill attribution stay empty
-      since those configs live one level up.
-    </li>
-  </ul>
-  <p class="hint">
-    Folder paths:<br/>
-    <code>%USERPROFILE%\.claude</code> (Windows)<br/>
-    <code>~/.claude</code> (macOS, Linux)<br/>
-    <span style="color:var(--muted)">Browsers can't auto-navigate to a specific path for security reasons. On Chrome/Edge, the picker remembers your last location after the first pick.</span>
-  </p>
-  <p class="hint" style="font-size:11.5px;color:var(--muted)">
-    A single <code>.jsonl</code> file also works — it gives the most basic view (no CLAUDE.md / skill attribution).
-  </p>
+  <div class="drop-inner">
+    <div class="brand-mark"><span class="dot"></span>cc-debrief</div>
+    <p class="lede">
+      <strong>Post-session debrief for Claude Code transcripts.</strong>
+      See where every token went — repeated reads, idle gaps, model overuse, hidden subagent cost — and get a personalised checklist of fixes for next session.
+    </p>
 
-  <!-- Session list (shown when multiple .jsonl files are in the picked folder) -->
-  <div class="session-picker" id="session-picker" hidden>
-    <h3>Multiple sessions in that folder — pick one:</h3>
-    <ol id="session-list"></ol>
+    <div class="drop-area" id="drop-area">
+      <p class="primary-line">Pick your whole <strong><code>.claude</code></strong> folder for the full report</p>
+      <button class="pick" type="button" id="folder-btn">Choose .claude/ folder</button>
+      <input type="file" id="folder-input" webkitdirectory directory multiple />
+      <div class="or">or</div>
+      <label class="pick secondary" for="file-input">Choose JSONL file</label>
+      <input type="file" id="file-input" accept=".jsonl,application/json" />
+    </div>
+
+    <ul class="hint-list">
+      <li>
+        <strong>The full <code>~/.claude</code> folder<span class="badge">recommended</span></strong><br/>
+        Walks every session JSONL plus your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
+        You'll get a sortable list of every session to pick from, with full per-source attribution.
+      </li>
+      <li>
+        <strong>A specific project folder under <code>projects/</code></strong><br/>
+        Only that project's sessions appear in the list. <code>CLAUDE.md</code> and skill attribution
+        stay empty because those configs live one level up.
+      </li>
+    </ul>
+
+    <div class="meta">
+      Folder lives at <code>%USERPROFILE%\.claude</code> (Windows) / <code>~/.claude</code> (macOS, Linux).
+      Browsers can't auto-navigate to a specific path for security reasons; on Chrome/Edge, the picker
+      remembers your last location after the first pick. A single <code>.jsonl</code> file also works
+      — it gives the most basic view.
+    </div>
+
+    <div class="session-picker" id="session-picker" hidden>
+      <h3>Multiple sessions — pick one</h3>
+      <ol id="session-list"></ol>
+    </div>
+
+    <div class="privacy">
+      <strong>Privacy:</strong> nothing is uploaded. No LLM calls, no API key, no internet — your transcripts
+      and the rendered report stay on this machine.
+    </div>
+
+    <div class="err" id="drop-err" hidden></div>
+
+    <footer class="drop-footer">
+      <a href="https://github.com/MichaelSourbron/cc-debrief" target="_blank" rel="noopener">GitHub</a>
+      <span class="sep">·</span>
+      <a href="https://github.com/MichaelSourbron/cc-debrief/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      <span class="sep">·</span>
+      built by Michael Sourbron
+    </footer>
   </div>
-  <p class="privacy">
-    <strong>Privacy:</strong> nothing is uploaded.
-    All parsing and rendering runs in your browser.
-    Your transcripts never leave this machine.
-  </p>
-  <div class="err" id="drop-err" hidden></div>
 </section>
 
 <!-- Sticky TOC (post-data) -->
@@ -425,7 +493,15 @@
   <div class="card-body"><div class="chart" id="chart-cost"></div></div>
 </details>
 
-<div class="footer">cc-debrief — local, no upload, no LLM</div>
+<div class="footer">
+  cc-debrief — local, no upload, no LLM
+  <span style="margin:0 6px;opacity:0.4">·</span>
+  <a href="https://github.com/MichaelSourbron/cc-debrief" target="_blank" rel="noopener" style="color:var(--muted)">GitHub</a>
+  <span style="margin:0 6px;opacity:0.4">·</span>
+  <a href="https://github.com/MichaelSourbron/cc-debrief/blob/main/LICENSE" target="_blank" rel="noopener" style="color:var(--muted)">MIT</a>
+  <span style="margin:0 6px;opacity:0.4">·</span>
+  built by Michael Sourbron
+</div>
 </main>
 
 <script src="main.js"></script>
