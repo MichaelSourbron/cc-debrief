@@ -200,9 +200,25 @@
     font-size: 13px;
     transition: background 0.12s, border-color 0.12s;
   }
-  .session-picker li:hover { background: #1c2128; border-color: var(--border); }
+  .session-picker li.row:hover { background: #1c2128; border-color: var(--border); }
   .session-picker .sess-name { color: var(--fg); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; }
-  .session-picker .sess-meta { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .session-picker .sess-meta { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 12px; }
+  .session-picker .proj-group { padding: 0; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; }
+  .session-picker .proj-group:hover { border-color: var(--accent); }
+  .session-picker .proj-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; cursor: pointer; user-select: none;
+  }
+  .session-picker .proj-header:hover { background: #1c2128; border-radius: 6px 6px 0 0; }
+  .session-picker .proj-chev { color: var(--muted); width: 12px; flex-shrink: 0; transition: transform 0.15s; }
+  .session-picker .proj-group.expanded .proj-chev { transform: rotate(90deg); }
+  .session-picker .proj-name { color: var(--fg); font-weight: 600; font-size: 13px; flex-shrink: 0; }
+  .session-picker .proj-meta { color: var(--muted); font-size: 11.5px; margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .session-picker .proj-sessions {
+    margin: 0; padding: 4px 8px 8px 32px; list-style: none;
+    border-top: 1px solid var(--border);
+  }
+  .session-picker .proj-sessions li.row { margin: 2px 0; }
 
   /* Report (post-data state) — same as CLI template */
   body:not(.has-data) #report-root,

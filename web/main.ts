@@ -581,37 +581,156 @@ function hideSessionPicker(): void {
   document.getElementById("session-list")!.innerHTML = "";
 }
 
+function getProjectSlug(path: string): string {
+  const parts = path.split(/[\\/]/);
+  const i = parts.indexOf("projects");
+  if (i >= 0 && i + 1 < parts.length) return parts[i + 1];
+  return "(loose sessions)";
+}
+
+function fmtSize(b: number): string {
+  if (b < 1024) return b + " B";
+  if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
+  return (b / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+function fmtDate(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+}
+
+function fmtAgo(ms: number): string {
+  const diff = Date.now() - ms;
+  const s = Math.round(diff / 1000);
+  if (s < 60) return s + "s ago";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.round(m / 60);
+  if (h < 24) return h + "h ago";
+  const d = Math.round(h / 24);
+  if (d < 30) return d + "d ago";
+  return fmtDate(ms);
+}
+
 function showSessionPicker(jsonls: FilePathPair[], allPairs: FilePathPair[]): void {
-  const fmtSize = (b: number) => {
-    if (b < 1024) return b + " B";
-    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
-    return (b / (1024 * 1024)).toFixed(1) + " MB";
-  };
-  // Sort by recency (largest mtime first); File.lastModified is ms epoch.
-  const sorted = [...jsonls].sort((a, b) => b.file.lastModified - a.file.lastModified);
+  // Group sessions by project slug. Each session pair maps to its project.
+  type Group = { project: string; sessions: FilePathPair[]; latestMs: number; totalBytes: number };
+  const groups = new Map<string, Group>();
+  for (const p of jsonls) {
+    const project = getProjectSlug(p.path);
+    let g = groups.get(project);
+    if (!g) {
+      g = { project, sessions: [], latestMs: 0, totalBytes: 0 };
+      groups.set(project, g);
+    }
+    g.sessions.push(p);
+    if (p.file.lastModified > g.latestMs) g.latestMs = p.file.lastModified;
+    g.totalBytes += p.file.size;
+  }
+  // Sort each group's sessions by recency, and groups by their latest session.
+  for (const g of groups.values()) g.sessions.sort((a, b) => b.file.lastModified - a.file.lastModified);
+  const sortedGroups = [...groups.values()].sort((a, b) => b.latestMs - a.latestMs);
+
   const ol = document.getElementById("session-list")!;
-  ol.innerHTML = sorted
+  // If there's only one project, render a flat list (same as before).
+  // Otherwise, render a grouped list with expand-on-click.
+  if (sortedGroups.length === 1) {
+    renderFlatList(ol, sortedGroups[0].sessions, allPairs);
+  } else {
+    renderGroupedList(ol, sortedGroups, allPairs);
+  }
+
+  const summary = document.querySelector("#session-picker h3")!;
+  summary.textContent = `${jsonls.length} session${jsonls.length === 1 ? "" : "s"} across ${sortedGroups.length} project${sortedGroups.length === 1 ? "" : "s"} — pick one`;
+  document.getElementById("session-picker")!.hidden = false;
+}
+
+function renderFlatList(
+  ol: HTMLElement,
+  sessions: FilePathPair[],
+  allPairs: FilePathPair[],
+): void {
+  ol.innerHTML = sessions
     .map((p, i) => {
-      const date = new Date(p.file.lastModified).toISOString().slice(0, 16).replace("T", " ");
+      const sessionId = p.file.name.replace(/\.jsonl$/, "").slice(0, 12);
       return (
-        '<li data-i="' + i + '">' +
-        '<span class="sess-name">' + escapeHtml(p.path) + "</span>" +
-        '<span class="sess-meta">' + fmtSize(p.file.size) + " · " + date + "</span>" +
+        '<li class="row" data-i="' + i + '">' +
+        '<span class="sess-name">' + escapeHtml(sessionId) + '</span>' +
+        '<span class="sess-meta">' + fmtSize(p.file.size) + " · " + fmtAgo(p.file.lastModified) + "</span>" +
         "</li>"
       );
     })
     .join("");
-  ol.querySelectorAll<HTMLElement>("li").forEach((li) => {
+  ol.querySelectorAll<HTMLElement>("li.row").forEach((li) => {
     li.addEventListener("click", async () => {
       const i = Number(li.getAttribute("data-i"));
-      const chosen = sorted[i];
+      hideSessionPicker();
+      await processInput(sessions[i].file, allPairs).catch((err) =>
+        setError(String(err?.message ?? err)),
+      );
+    });
+  });
+}
+
+type Group = { project: string; sessions: FilePathPair[]; latestMs: number; totalBytes: number };
+
+function renderGroupedList(
+  ol: HTMLElement,
+  groups: Group[],
+  allPairs: FilePathPair[],
+): void {
+  ol.innerHTML = groups
+    .map((g, gi) => {
+      const sessionRows = g.sessions
+        .map((p, si) => {
+          const sessionId = p.file.name.replace(/\.jsonl$/, "").slice(0, 12);
+          return (
+            '<li class="row" data-g="' + gi + '" data-s="' + si + '">' +
+            '<span class="sess-name">' + escapeHtml(sessionId) + '</span>' +
+            '<span class="sess-meta">' + fmtSize(p.file.size) + " · " + fmtAgo(p.file.lastModified) + "</span>" +
+            "</li>"
+          );
+        })
+        .join("");
+      return (
+        '<li class="proj-group" data-g="' + gi + '">' +
+        '<div class="proj-header" data-g="' + gi + '">' +
+        '<span class="proj-chev">▸</span>' +
+        '<span class="proj-name">' + escapeHtml(g.project) + '</span>' +
+        '<span class="proj-meta">' +
+        g.sessions.length + " session" + (g.sessions.length === 1 ? "" : "s") +
+        " · " + fmtSize(g.totalBytes) +
+        " · last " + fmtAgo(g.latestMs) +
+        '</span>' +
+        '</div>' +
+        '<ul class="proj-sessions" hidden>' + sessionRows + '</ul>' +
+        '</li>'
+      );
+    })
+    .join("");
+
+  // Expand/collapse project headers.
+  ol.querySelectorAll<HTMLElement>(".proj-header").forEach((h) => {
+    h.addEventListener("click", () => {
+      const li = h.closest<HTMLElement>(".proj-group")!;
+      const sublist = li.querySelector<HTMLElement>(".proj-sessions")!;
+      const open = !sublist.hidden;
+      sublist.hidden = open;
+      li.classList.toggle("expanded", !open);
+    });
+  });
+  // Click a session row → load it.
+  ol.querySelectorAll<HTMLElement>("li.row").forEach((li) => {
+    li.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const gi = Number(li.getAttribute("data-g"));
+      const si = Number(li.getAttribute("data-s"));
+      const chosen = groups[gi].sessions[si];
       hideSessionPicker();
       await processInput(chosen.file, allPairs).catch((err) =>
         setError(String(err?.message ?? err)),
       );
     });
   });
-  document.getElementById("session-picker")!.hidden = false;
 }
 
 init();
