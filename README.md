@@ -116,6 +116,14 @@ cc-debrief <session.jsonl> --out my-report.html
 
 Drop a `.jsonl` onto the page (or pick your `.claude/` folder for full attribution). The same report renders in your browser. Nothing is uploaded — every byte of parsing happens client-side via `FileReader` + `showDirectoryPicker`.
 
+After picking the whole `.claude/` folder, you get a session list grouped by project, sorted by recency. Three actions per project:
+
+- **Click the project name** → load its most recent session.
+- **Click `ALL`** → combine every session of that project into one cross-session report (useful for "this file was read 380× across 5 sessions" patterns).
+- **Click `▸`** → expand to pick a specific session.
+
+A **← Load another** button on the report header lets you go back to the picker without reloading the page.
+
 To run it locally instead:
 
 ```bash
@@ -145,6 +153,8 @@ A tour of the report, generated from a real 9-day, 4,167-turn session.
 ![Drop screen](web/screenshots/00-drop-screen.png)
 
 Pick the whole `~/.claude/` folder for full attribution (sortable session list + CLAUDE.md + skills), or a specific project subfolder for one project's sessions only. A single `.jsonl` works too for the most basic view. Nothing is uploaded — all parsing runs in your browser via `FileReader` + `showDirectoryPicker`.
+
+After picking, sessions are **grouped by project** in a collapsible list. Click a project to load its most recent session, the **ALL** button to combine every session of that project into a single cross-session report, or **▸** to drill into a specific session. The report header has a **← Load another** button so you can pick a different session without reloading.
 
 ### 1. Hero — the headline
 
@@ -309,8 +319,8 @@ The CLI and web entry points are **thin wrappers** — both call into the same `
 
 Eleven distinct patterns, each with a copy-paste fix:
 
-1. **Repeated-call detection** — files / commands invoked many times that could be cached or pinned.
-2. **Idle-gap analysis** — gaps over 5 minutes that expire the prompt cache.
+1. **Repeated-call detection** — files / commands invoked many times that could be cached or pinned. Cross-session combine reveals patterns that single-session reports miss.
+2. **Idle-gap analysis** — gaps over 5 minutes that expire the prompt cache. In a combined-sessions report, the gaps between session ends/starts surface as the longest cache-killers.
 3. **Cache TTL split** — 5m vs 1h cache writes.
 4. **API errors** — 529 capacity overloads, network failures.
 5. **Compaction events** — auto-compactions and how full the context was.
