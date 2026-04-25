@@ -242,25 +242,28 @@
   <h1>cc-debrief</h1>
   <p class="lede">Post-session debrief for Claude Code transcripts. Drop a session JSONL and you'll get token attribution, repeated-call detection, idle-gap analysis, and a personalized "next session" checklist.</p>
   <div class="drop-area" id="drop-area">
-    <p><strong>Drop a JSONL file here</strong></p>
-    <label class="pick" for="file-input">Choose JSONL file</label>
-    <input type="file" id="file-input" accept=".jsonl,application/json" />
-    <div class="or">— or —</div>
-    <button class="pick secondary" type="button" id="folder-btn">Choose .claude/ folder</button>
+    <p><strong>Pick your whole <code>.claude</code> folder for the full report</strong></p>
+    <button class="pick" type="button" id="folder-btn">Choose .claude/ folder</button>
     <input type="file" id="folder-input" webkitdirectory directory multiple />
-    <div class="or" style="margin-top:6px;font-size:11px">(folder enables CLAUDE.md + skill attribution)</div>
+    <div class="or">— or just a JSONL (basic attribution only) —</div>
+    <label class="pick secondary" for="file-input">Choose JSONL file</label>
+    <input type="file" id="file-input" accept=".jsonl,application/json" />
   </div>
   <p class="hint">
-    Sessions live at:<br/>
-    <code>%USERPROFILE%\.claude\projects\&lt;project&gt;\&lt;session&gt;.jsonl</code> (Windows)<br/>
-    <code>~/.claude/projects/&lt;project&gt;/&lt;session&gt;.jsonl</code> (macOS, Linux)
+    <strong style="color:var(--fg)">Recommended:</strong> pick the whole <code>~/.claude</code> folder.
+    The picker walks it client-side and finds:
+    every session JSONL, your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
+    You'll get a sortable list of sessions to pick from, plus full per-source attribution
+    (CLAUDE.md + skill listing + history + this-turn + residual).
   </p>
   <p class="hint">
-    <strong style="color:var(--fg)">What folder should I pick?</strong><br/>
-    • Just a single <code>.jsonl</code> — basic attribution.<br/>
-    • A project folder under <code>projects/</code> — all sessions for that project; pick one from the list.<br/>
-    • Your whole <code>~/.claude</code> folder — every session, plus CLAUDE.md and skill attribution.<br/>
-    <span style="color:var(--muted)">Browsers can't auto-navigate to a specific path. Chrome/Edge remember your last pick across visits.</span>
+    Sessions live at:<br/>
+    <code>%USERPROFILE%\.claude</code> (Windows)<br/>
+    <code>~/.claude</code> (macOS, Linux)<br/>
+    <span style="color:var(--muted)">Browsers can't auto-navigate to a specific path for security reasons. On Chrome/Edge, the picker remembers your last location after the first pick.</span>
+  </p>
+  <p class="hint" style="font-size:11.5px;color:var(--muted)">
+    Smaller picks also work: a single project folder under <code>projects/</code> for one project's sessions, or a single <code>.jsonl</code> for the most basic view.
   </p>
 
   <!-- Session list (shown when multiple .jsonl files are in the picked folder) -->
