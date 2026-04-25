@@ -4,6 +4,8 @@
 
 **Live web app: [michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)** — drag-drop a session JSONL, see the report, no install.
 
+> 🛈 Built for use with Anthropic's [Claude Code](https://www.anthropic.com/claude-code). This is an **independent, unofficial third-party project** — not endorsed by or affiliated with Anthropic.
+
 [`ccusage`](https://github.com/ryoppippi/ccusage) tells you **how much** you spent. `cc-debrief` tells you **where** — which `CLAUDE.md`, which loaded skill, which conversation history, which repeated `Read` of which file, where idle gaps expired the prompt cache — and gives you a personalised checklist of things to change.
 
 100% local. No LLM calls. No API key. No internet. Your transcripts never leave your machine.
