@@ -320,19 +320,23 @@ The CLI and web entry points are **thin wrappers** — both call into the same `
 
 ## What it detects
 
-Eleven distinct patterns, each with a copy-paste fix:
+Fifteen distinct patterns, each with a copy-paste fix or actionable callout:
 
 1. **Repeated-call detection** — files / commands invoked many times that could be cached or pinned. Cross-session combine reveals patterns that single-session reports miss.
 2. **Idle-gap analysis** — gaps over 5 minutes that expire the prompt cache. In a combined-sessions report, the gaps between session ends/starts surface as the longest cache-killers.
-3. **Cache TTL split** — 5m vs 1h cache writes.
+3. **Cache TTL split** — 5m vs 1h cache writes (different pricing).
 4. **API errors** — 529 capacity overloads, network failures.
 5. **Compaction events** — auto-compactions and how full the context was.
-6. **Model-routing recommendations** — what a session would have cost on Sonnet/Haiku.
-7. **Subagent cost attribution** — hidden cost of `Agent` calls' internal turns.
+6. **Model-routing recommendations** — what a session would have cost on Sonnet/Haiku, with the cache-break caveat baked in.
+7. **Subagent cost attribution** — hidden cost of `Agent` calls' internal turns, billed separately from the main thread.
 8. **Unused enabled skills** — skill listings consuming tokens for skills you never invoke.
 9. **Correction-loop detection** — repeated "no", "still wrong", "fix it" prompts that signal a stuck session.
 10. **Over-specified CLAUDE.md** — > 5K tokens, likely getting ignored.
 11. **Plan Mode usage** — flags long sessions that didn't use plan mode.
+12. **Read:Edit ratio** — high ratio (≥5×) signals exploration-heavy sessions where Claude is hunting for files instead of being told where to look.
+13. **`stop_reason` distribution** — flags turns truncated by `max_tokens` (billed in full but incomplete) and `pause_turn` events (server-tool sampling hit its iteration limit).
+14. **Per-model cost split** — when a session mixes models, breaks down spend per model so you can see where the money went.
+15. **Extended-thinking output share** — Anthropic redacts thinking text in the JSONL but the API still bills the tokens. Estimated as residual `output_tokens − visible(text + tool_use)` to surface otherwise-invisible cost.
 
 ---
 
