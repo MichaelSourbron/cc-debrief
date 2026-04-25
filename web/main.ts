@@ -256,59 +256,125 @@ function setupInteractivity(): void {
   sections.forEach((s) => observer.observe(s));
 }
 
-// Walk a FileList from <input webkitdirectory> to build IndexedSources.
+type FilePathPair = { file: File; path: string };
+
+function fileListToPairs(files: FileList | null): FilePathPair[] {
+  if (!files) return [];
+  return Array.from(files).map((f) => ({
+    file: f,
+    path: (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name,
+  }));
+}
+
+// Walk a File System Access directory handle and produce {file, path} pairs.
+// Falls back to FileList path if FSA isn't supported.
+async function fsaHandleToPairs(
+  dirHandle: FileSystemDirectoryHandle,
+): Promise<FilePathPair[]> {
+  const out: FilePathPair[] = [];
+  async function walk(dir: FileSystemDirectoryHandle, prefix: string): Promise<void> {
+    // The async iterator on FileSystemDirectoryHandle is partially typed in lib.dom; cast.
+    const entries = (dir as unknown as {
+      entries: () => AsyncIterable<[string, FileSystemHandle]>;
+    }).entries();
+    for await (const [name, handle] of entries) {
+      const path = prefix ? `${prefix}/${name}` : name;
+      if (handle.kind === "file") {
+        const file = await (handle as FileSystemFileHandle).getFile();
+        out.push({ file, path });
+      } else if (handle.kind === "directory") {
+        await walk(handle as FileSystemDirectoryHandle, path);
+      }
+    }
+  }
+  await walk(dirHandle, "");
+  return out;
+}
+
+// Try the modern picker first (Chrome / Edge / Opera) — passing id makes it
+// remember the user's last-picked directory across sessions, so first use is
+// the only one that needs manual navigation.
+async function pickFolder(): Promise<FilePathPair[]> {
+  const w = window as unknown as {
+    showDirectoryPicker?: (opts?: {
+      id?: string;
+      mode?: "read" | "readwrite";
+      startIn?: string;
+    }) => Promise<FileSystemDirectoryHandle>;
+  };
+  if (w.showDirectoryPicker) {
+    try {
+      const handle = await w.showDirectoryPicker({
+        id: "cc-debrief-claude",
+        mode: "read",
+        startIn: "home",
+      });
+      return await fsaHandleToPairs(handle);
+    } catch (e) {
+      const err = e as { name?: string };
+      if (err?.name === "AbortError") return [];
+      // Fall through to fallback if FSA throws for any other reason.
+    }
+  }
+  // Fallback: trigger the legacy <input webkitdirectory> click and await change.
+  return new Promise<FilePathPair[]>((resolve) => {
+    const input = document.getElementById("folder-input") as HTMLInputElement;
+    const onChange = () => {
+      input.removeEventListener("change", onChange);
+      resolve(fileListToPairs(input.files));
+      input.value = "";
+    };
+    input.addEventListener("change", onChange);
+    input.click();
+  });
+}
+
+// Build IndexedSources from a list of {file, path} pairs.
 // Pulls user-level CLAUDE.md, plugin-cache SKILL.md files, and project CLAUDE.md.
-async function buildSourcesFromFolder(
-  files: FileList | null,
+async function buildSourcesFromPairs(
+  pairs: FilePathPair[],
   sessionCwd: string | undefined,
 ): Promise<IndexedSources> {
   const sources: IndexedSources = { skills: [], mcpInstructions: [] };
-  if (!files || files.length === 0) return sources;
+  if (pairs.length === 0) return sources;
 
-  const skillFiles: File[] = [];
-  let userMd: File | null = null;
-  let projectMd: File | null = null;
-  let settingsJson: File | null = null;
+  const skillFiles: FilePathPair[] = [];
+  let userMd: FilePathPair | null = null;
+  let projectMd: FilePathPair | null = null;
+  let settingsJson: FilePathPair | null = null;
   const projectBasename = sessionCwd ? sessionCwd.split(/[\\/]/).pop() : null;
 
-  for (const f of Array.from(files)) {
-    // webkitRelativePath gives the path within the dropped folder, e.g. ".claude/skills/foo/SKILL.md"
-    const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
-    const name = f.name;
-    if (name === "SKILL.md") skillFiles.push(f);
+  for (const p of pairs) {
+    const name = p.file.name;
+    if (name === "SKILL.md") skillFiles.push(p);
     else if (name === "CLAUDE.md") {
-      // First CLAUDE.md at the dropped folder root we treat as user-level;
-      // any deeper CLAUDE.md whose path mentions the project basename = project-level.
-      if (projectBasename && path.toLowerCase().includes(projectBasename.toLowerCase())) {
-        projectMd = f;
+      if (projectBasename && p.path.toLowerCase().includes(projectBasename.toLowerCase())) {
+        projectMd = p;
       } else if (!userMd) {
-        userMd = f;
+        userMd = p;
       }
-    } else if (name === "settings.json" && path.includes(".claude")) {
-      settingsJson = f;
+    } else if (name === "settings.json" && p.path.includes(".claude")) {
+      settingsJson = p;
     }
   }
 
   if (userMd) {
-    const text = await userMd.text();
     sources.claudeMdUser = {
-      path: (userMd as File & { webkitRelativePath?: string }).webkitRelativePath ?? userMd.name,
-      tokens: tokenCount(text),
+      path: userMd.path,
+      tokens: tokenCount(await userMd.file.text()),
     };
   }
   if (projectMd) {
-    const text = await projectMd.text();
     sources.claudeMdProject = {
-      path: (projectMd as File & { webkitRelativePath?: string }).webkitRelativePath ?? projectMd.name,
-      tokens: tokenCount(text),
+      path: projectMd.path,
+      tokens: tokenCount(await projectMd.file.text()),
     };
   }
 
-  // Determine which plugins are enabled (skip if no settings.json found).
   let enabledPluginPrefixes: string[] = [];
   if (settingsJson) {
     try {
-      const cfg = JSON.parse(await settingsJson.text()) as {
+      const cfg = JSON.parse(await settingsJson.file.text()) as {
         enabledPlugins?: Record<string, boolean>;
       };
       enabledPluginPrefixes = Object.entries(cfg.enabledPlugins ?? {})
@@ -322,15 +388,13 @@ async function buildSourcesFromFolder(
     }
   }
 
-  for (const f of skillFiles) {
-    const path = (f as File & { webkitRelativePath?: string }).webkitRelativePath ?? f.name;
-    // Keep skills under /skills/* (user-level) or under any enabled plugin prefix.
-    const isUserSkill = /[\\/]\.?claude[\\/]skills[\\/]/.test(path) || /^skills[\\/]/.test(path);
-    const isEnabledPlugin = enabledPluginPrefixes.some((pref) => path.includes(pref));
+  for (const p of skillFiles) {
+    const isUserSkill = /[\\/]\.?claude[\\/]skills[\\/]/.test(p.path) || /^skills[\\/]/.test(p.path);
+    const isEnabledPlugin = enabledPluginPrefixes.some((pref) => p.path.includes(pref));
     if (!isUserSkill && !isEnabledPlugin && enabledPluginPrefixes.length > 0) continue;
-    const text = await f.text();
+    const text = await p.file.text();
     const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-    let name = path;
+    let name = p.path;
     let description = "";
     if (fm) {
       const stripQ = (s: string) => s.trim().replace(/^["']|["']$/g, "");
@@ -340,18 +404,18 @@ async function buildSourcesFromFolder(
       if (dm) description = stripQ(dm[1]);
     }
     const listing = `- ${name}: ${description}\n`;
-    sources.skills.push({ name, path, tokens: tokenCount(listing) });
+    sources.skills.push({ name, path: p.path, tokens: tokenCount(listing) });
   }
   sources.skills.sort((a, b) => a.name.localeCompare(b.name));
   return sources;
 }
 
-async function processInput(jsonlFile: File, configFiles: FileList | null): Promise<void> {
+async function processInput(jsonlFile: File, configPairs: FilePathPair[]): Promise<void> {
   setError("");
   const text = await jsonlFile.text();
   const records = parseJsonl(text);
   const sessionCwd = findSessionCwd(records);
-  const sources = await buildSourcesFromFolder(configFiles, sessionCwd);
+  const sources = await buildSourcesFromPairs(configPairs, sessionCwd);
   const turns = buildTurns(records, sources);
   if (turns.length === 0) {
     setError("No assistant turns with usage blocks found in this file.");
@@ -408,9 +472,9 @@ function setError(msg: string): void {
 function reset(): void {
   document.body.classList.remove("has-data");
   setError("");
-  // Reset file inputs so the same file can be re-selected.
   (document.getElementById("file-input") as HTMLInputElement).value = "";
-  (document.getElementById("folder-input") as HTMLInputElement).value = "";
+  // Don't reset lastPickedFolder — keeping it lets the user analyze a different
+  // .jsonl from the same project without re-picking the .claude folder.
 }
 
 function pickJsonlFromList(list: FileList | File[] | null): File | null {
@@ -419,27 +483,43 @@ function pickJsonlFromList(list: FileList | File[] | null): File | null {
   return arr.find((f) => f.name.endsWith(".jsonl")) ?? null;
 }
 
+// Cache the most recent folder pick so a JSONL pick afterwards still gets
+// CLAUDE.md / skill attribution without re-picking.
+let lastPickedFolder: FilePathPair[] = [];
+
 function init(): void {
   const fileInput = document.getElementById("file-input") as HTMLInputElement;
-  const folderInput = document.getElementById("folder-input") as HTMLInputElement;
+  const folderBtn = document.getElementById("folder-btn") as HTMLButtonElement;
   const dropArea = document.getElementById("drop-area")!;
   const resetBtn = document.getElementById("reset-btn")!;
 
   fileInput.addEventListener("change", async () => {
     const f = fileInput.files?.[0];
-    if (f) await processInput(f, null).catch((e) => setError(String(e?.message ?? e)));
+    if (f) await processInput(f, lastPickedFolder).catch((e) => setError(String(e?.message ?? e)));
+    fileInput.value = "";
   });
 
-  folderInput.addEventListener("change", async () => {
-    const list = folderInput.files;
-    const jsonl = pickJsonlFromList(list);
-    if (!jsonl) {
-      setError(
-        "No .jsonl file found in the selected folder. Tip: drop the project folder OR pair a .jsonl drop with a .claude folder drop.",
-      );
+  folderBtn.addEventListener("click", async () => {
+    setError("");
+    let pairs: FilePathPair[];
+    try {
+      pairs = await pickFolder();
+    } catch (e) {
+      setError(String((e as { message?: string })?.message ?? e));
       return;
     }
-    await processInput(jsonl, list).catch((e) => setError(String(e?.message ?? e)));
+    if (pairs.length === 0) return;
+    lastPickedFolder = pairs;
+    const jsonl = pickJsonlFromPairs(pairs);
+    if (jsonl) {
+      await processInput(jsonl, pairs).catch((err) => setError(String(err?.message ?? err)));
+    } else {
+      // Folder picked but no .jsonl in it (typical for ~/.claude/ which has projects/ subfolder).
+      // Inform user that CLAUDE.md/skill attribution is now armed; they need to pick a .jsonl next.
+      setError(
+        "Folder loaded — CLAUDE.md and skill attribution armed. Now click \"Choose JSONL file\" to pick a session.",
+      );
+    }
   });
 
   resetBtn.addEventListener("click", reset);
@@ -461,16 +541,19 @@ function init(): void {
     const dt = (e as DragEvent).dataTransfer;
     if (!dt) return;
     const files = dt.files;
+    const pairs = files.length > 1 ? fileListToPairs(files) : [];
+    if (pairs.length > 0) lastPickedFolder = pairs;
     const jsonl = pickJsonlFromList(files);
     if (!jsonl) {
-      setError("Drop didn't include a .jsonl file. Use the folder picker for .claude/ folders.");
+      setError(
+        "Drop didn't include a .jsonl file. Use \"Choose .claude/ folder\" for the config folder, then \"Choose JSONL file\" for the session.",
+      );
       return;
     }
-    await processInput(jsonl, files.length > 1 ? files : null).catch((err) =>
+    await processInput(jsonl, pairs.length > 0 ? pairs : lastPickedFolder).catch((err) =>
       setError(String(err?.message ?? err)),
     );
   });
-  // Document-wide drop also accepted (covers misses outside the dotted box).
   document.addEventListener("dragover", (e) => e.preventDefault());
   document.addEventListener("drop", (e) => {
     if (document.body.classList.contains("has-data")) return;
@@ -479,11 +562,15 @@ function init(): void {
     const files = (e as DragEvent).dataTransfer?.files;
     const jsonl = pickJsonlFromList(files ?? null);
     if (jsonl) {
-      processInput(jsonl, files && files.length > 1 ? files : null).catch((err) =>
+      processInput(jsonl, lastPickedFolder).catch((err) =>
         setError(String(err?.message ?? err)),
       );
     }
   });
+}
+
+function pickJsonlFromPairs(pairs: FilePathPair[]): File | null {
+  return pairs.find((p) => p.file.name.endsWith(".jsonl"))?.file ?? null;
 }
 
 init();
