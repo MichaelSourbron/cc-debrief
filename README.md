@@ -4,30 +4,42 @@ Post-session debrief for Claude Code transcripts.
 
 `ccusage` tells you how much you spent. `cc-debrief` tells you *where* — which CLAUDE.md, which skill listing, which conversation history, which repeated `Read` of which file, where idle gaps expired the prompt cache — and what to do about it next session.
 
-## Install
+## Two ways to use it
 
-Run without installing:
-
-```
-npx cc-debrief <session.jsonl>
-```
-
-Or install globally:
+### CLI (terminal users)
 
 ```
+npx cc-debrief <session.jsonl>          # no install
+# or
 npm install -g cc-debrief
-cc-debrief <session.jsonl>
-```
-
-## Usage
-
-```
 cc-debrief <session.jsonl> [--out report.html]
 ```
 
-Generates a self-contained `report.html` in the current directory (or at `--out`). Open it in a browser.
+Generates a self-contained `report.html` in the current directory.
+
+### Web (drag-and-drop)
+
+```
+npm install
+npm run build:web
+start web/dist/index.html         # double-click, or open with any browser
+```
+
+Drop a `.jsonl` onto the page and the same report renders in-browser.
+For full attribution (CLAUDE.md + skill listing), pick your `.claude/`
+folder via the "Choose .claude/ folder" button — modern browsers walk
+the directory client-side. Nothing is uploaded anywhere.
+
+Both produce identical reports because they share the same `core/` parsing + analysis + render code.
 
 Session JSONL files live at `~/.claude/projects/<project>/<session>.jsonl` (Linux/macOS) or `%USERPROFILE%\.claude\projects\<project>\<session>.jsonl` (Windows).
+
+### Deploy the web version
+
+The `web/dist/` directory after `npm run build:web` is two static files (~64 KB total). Drop them on any static host:
+
+- **GitHub Pages**: copy `web/dist/*` into a `docs/` folder on `main`, enable Pages → "Deploy from branch: main /docs". Live at `https://<user>.github.io/cc-debrief/`.
+- **Cloudflare Pages / Netlify / Vercel**: connect the repo, set build command `npm run build:web`, output dir `web/dist`. Auto-deploys on every push.
 
 ## What the report shows
 

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>cc-debrief</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+  }
+  body.has-data {
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+
+  /* Drop zone (pre-data state) */
+  .drop {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+  }
+  body.has-data .drop { display: none; }
+  .drop h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .drop .lede { color: var(--muted); font-size: 14px; max-width: 540px; line-height: 1.5; margin: 0 auto 24px; }
+  .drop-area {
+    width: 100%;
+    max-width: 540px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 40px 24px;
+    background: var(--card);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .drop-area.over { border-color: var(--accent); background: #1c2128; }
+  .drop-area p { margin: 0 0 16px; }
+  .drop-area .or { color: var(--muted); font-size: 12px; margin: 12px 0; }
+  .drop-area .pick {
+    display: inline-block;
+    padding: 8px 14px;
+    background: var(--accent);
+    color: #0d1117;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .drop-area .pick.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .drop input[type=file] { display: none; }
+  .drop .privacy {
+    color: var(--muted);
+    font-size: 12px;
+    max-width: 540px;
+    margin: 24px auto 0;
+    line-height: 1.5;
+  }
+  .drop .privacy strong { color: var(--good); }
+  .drop .err { color: var(--bad); margin-top: 12px; font-size: 13px; }
+
+  /* Report (post-data state) — same as CLI template */
+  body:not(.has-data) #report-root,
+  body:not(.has-data) aside.toc { display: none; }
+
+  aside.toc {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 24px 12px;
+    background: var(--bg);
+  }
+  aside.toc .brand { font-weight: 600; font-size: 13px; margin-bottom: 16px; padding: 0 8px; }
+  aside.toc nav { display: flex; flex-direction: column; gap: 2px; }
+  aside.toc a {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+  }
+  aside.toc a:hover { color: var(--fg); background: #1c2128; }
+  aside.toc a.active { color: var(--fg); border-left-color: var(--accent); background: #1c2128; }
+  aside.toc .reset {
+    margin-top: 16px;
+    color: var(--muted);
+    font-size: 11px;
+    padding: 6px 8px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+  }
+  aside.toc .reset:hover { color: var(--fg); border-color: var(--accent); }
+
+  main { padding: 24px; min-width: 0; }
+  h1.report-title { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; word-break: break-all; }
+  .hero {
+    background: linear-gradient(135deg, #1c2233, #161b22);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 28px 24px;
+    margin-bottom: 16px;
+  }
+  .hero-row { display: flex; gap: 48px; flex-wrap: wrap; }
+  .hero-stat .hero-value { font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .hero-stat .hero-value.secondary { color: var(--accent); font-size: 32px; }
+  .hero-stat .hero-label { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .hero-tagline { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .stat-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  details.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
+  details.card summary { cursor: pointer; list-style: none; padding: 14px 18px; display: flex; align-items: center; gap: 12px; user-select: none; }
+  details.card summary::-webkit-details-marker { display: none; }
+  details.card summary .chev { color: var(--muted); transition: transform 0.15s; width: 12px; flex-shrink: 0; }
+  details.card[open] summary .chev { transform: rotate(90deg); }
+  details.card summary .card-title { font-weight: 600; flex-shrink: 0; }
+  details.card summary .card-summary { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+  details.card .card-body { padding: 0 16px 16px; }
+
+  .insights ul { margin: 0; padding-left: 0; list-style: none; }
+  .insights li { padding: 8px 0 8px 22px; position: relative; line-height: 1.5; }
+  .insights li::before { position: absolute; left: 0; top: 8px; font-size: 14px; }
+  .insights li.info::before { content: "○"; color: var(--accent); }
+  .insights li.good::before { content: "✓"; color: var(--good); }
+  .insights li.warn::before { content: "!"; color: var(--warn); font-weight: 700; }
+  .insights .action { margin-top: 6px; padding: 8px 10px; border-left: 2px solid var(--accent); background: #1a2230; color: #c9d1d9; font-size: 12.5px; border-radius: 0 4px 4px 0; }
+  .insights .action::before { content: "→ "; color: var(--accent); font-weight: 700; }
+
+  .rec-list { margin: 0; padding: 0; list-style: none; counter-reset: rec; }
+  .rec-list > li { padding: 14px 18px 14px 56px; position: relative; border-bottom: 1px solid #21262d; counter-increment: rec; }
+  .rec-list > li:last-child { border-bottom: none; }
+  .rec-list > li::before { content: counter(rec); position: absolute; left: 16px; top: 14px; width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #0d1117; font-weight: 700; text-align: center; line-height: 28px; font-size: 13px; }
+  .rec-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .rec-pattern { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+  .rec-why { color: #c9d1d9; font-size: 13px; margin-bottom: 10px; }
+  .rec-impact { color: var(--good); font-size: 12px; margin-top: 8px; font-weight: 500; }
+  .rec-impact::before { content: "▸ Impact: "; color: var(--muted); font-weight: 400; }
+  pre.snippet { background: #0a0d12; border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; overflow-x: auto; color: #c9d1d9; margin: 6px 0 0; white-space: pre; }
+  .rec-empty { padding: 16px 18px; color: var(--muted); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.subject { color: #c9d1d9; word-break: break-word; }
+  td.tools { color: var(--accent); font-size: 12px; word-break: break-word; }
+  td.muted { color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  tr.row-detail td { padding: 12px 16px 16px 24px; background: #0e131a; border-bottom: 1px solid var(--border); }
+  tr.row-detail .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  tr.row-detail .reply { color: #c9d1d9; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  tr.clickable td:first-child::before { content: "▸"; color: var(--muted); display: inline-block; width: 12px; transition: transform 0.15s; }
+  tr.expanded td:first-child::before { transform: rotate(90deg); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #1c2128; }
+
+  .chart { height: 380px; }
+  .chart-tall { height: 420px; }
+  .warn { color: var(--warn); }
+  .good { color: var(--good); }
+  .footer { color: var(--muted); font-size: 11px; margin-top: 32px; text-align: center; padding-bottom: 24px; }
+
+  @media (max-width: 900px) {
+    body.has-data { grid-template-columns: 1fr; }
+    aside.toc { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Pre-data drop zone -->
+<section class="drop" id="drop-screen">
+  <h1>cc-debrief</h1>
+  <p class="lede">Post-session debrief for Claude Code transcripts. Drop a session JSONL and you'll get token attribution, repeated-call detection, idle-gap analysis, and a personalized "next session" checklist.</p>
+  <div class="drop-area" id="drop-area">
+    <p><strong>Drop a JSONL file here</strong></p>
+    <label class="pick" for="file-input">Choose JSONL file</label>
+    <input type="file" id="file-input" accept=".jsonl,application/json" />
+    <div class="or">— or —</div>
+    <label class="pick secondary" for="folder-input">Choose .claude/ folder</label>
+    <input type="file" id="folder-input" webkitdirectory directory multiple />
+    <div class="or" style="margin-top:6px;font-size:11px">(folder also enables CLAUDE.md + skill attribution)</div>
+  </div>
+  <p class="privacy">
+    <strong>Privacy:</strong> nothing is uploaded.
+    All parsing and rendering runs in your browser.
+    Your transcripts never leave this machine.
+  </p>
+  <div class="err" id="drop-err" hidden></div>
+</section>
+
+<!-- Sticky TOC (post-data) -->
+<aside class="toc">
+  <div class="brand">cc-debrief</div>
+  <nav id="toc-nav">
+    <a href="#hero">Overview</a>
+    <a href="#stats">Stats</a>
+    <a href="#insights">Insights</a>
+    <a href="#recs">Next session</a>
+    <a href="#top-turns">Top turns</a>
+    <a href="#treemap">Focus turn</a>
+    <a href="#waste">Token waste</a>
+    <a href="#tools">Tools</a>
+    <a href="#idle">Idle gaps</a>
+    <a href="#attribution">Attribution</a>
+    <a href="#tokens">Per-turn tokens</a>
+    <a href="#cost">Cost vs cache</a>
+  </nav>
+  <button class="reset" id="reset-btn">↺ Load another file</button>
+</aside>
+
+<!-- Report (post-data) -->
+<main id="report-root">
+<h1 class="report-title">cc-debrief</h1>
+<div class="subtitle" id="source-path"></div>
+
+<section id="hero" class="hero">
+  <div class="hero-row">
+    <div class="hero-stat">
+      <div class="hero-value" id="hero-primary-value"></div>
+      <div class="hero-label" id="hero-primary-label"></div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-value secondary" id="hero-secondary-value"></div>
+      <div class="hero-label" id="hero-secondary-label"></div>
+    </div>
+  </div>
+  <div class="hero-tagline" id="hero-tagline"></div>
+</section>
+
+<section id="stats" class="strip"></section>
+
+<details class="card insights" id="insights" open>
+  <summary><span class="chev">▸</span><span class="card-title">Insights</span><span class="card-summary" id="insights-summary"></span></summary>
+  <div class="card-body"><ul id="insights-list"></ul></div>
+</details>
+
+<details class="card" id="recs" open>
+  <summary><span class="chev">▸</span><span class="card-title">Next session — things to try</span><span class="card-summary" id="recs-summary"></span></summary>
+  <div class="card-body" style="padding:0"><ol class="rec-list" id="recs-list"></ol></div>
+</details>
+
+<details class="card" id="top-turns" open>
+  <summary><span class="chev">▸</span><span class="card-title">Top 10 most expensive turns</span><span class="card-summary">click any row for details</span></summary>
+  <div class="card-body" style="overflow-x: auto;">
+    <table>
+      <thead><tr>
+        <th style="width:60px">#</th>
+        <th class="num" style="width:80px">Cost</th>
+        <th class="num" style="width:90px">Input</th>
+        <th class="num" style="width:80px">Cache</th>
+        <th style="width:auto">Subject</th>
+        <th style="width:25%">Tools called</th>
+      </tr></thead>
+      <tbody id="top-turns-body"></tbody>
+    </table>
+  </div>
+</details>
+
+<details class="card" id="treemap" open>
+  <summary><span class="chev">▸</span><span class="card-title">Focus turn — token attribution</span><span class="card-summary">treemap of source breakdown for the most expensive turn</span></summary>
+  <div class="card-body"><div class="chart" id="chart-treemap"></div></div>
+</details>
+
+<details class="card" id="waste" open>
+  <summary><span class="chev">▸</span><span class="card-title">Token waste from repeated calls</span><span class="card-summary" id="waste-summary"></span></summary>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+      <div class="chart chart-tall" id="chart-rep-files"></div>
+      <div class="chart chart-tall" id="chart-rep-cmds"></div>
+    </div>
+  </div>
+</details>
+
+<details class="card" id="tools">
+  <summary><span class="chev">▸</span><span class="card-title">Tool result tokens by tool</span><span class="card-summary" id="tools-summary"></span></summary>
+  <div class="card-body"><div class="chart" id="chart-tools"></div></div>
+</details>
+
+<details class="card" id="idle">
+  <summary><span class="chev">▸</span><span class="card-title">Time between turns</span><span class="card-summary" id="idle-summary"></span></summary>
+  <div class="card-body"><div class="chart" id="chart-idle"></div></div>
+</details>
+
+<details class="card" id="attribution">
+  <summary><span class="chev">▸</span><span class="card-title">Token attribution across turns</span><span class="card-summary">stacked area, bucketed for long sessions</span></summary>
+  <div class="card-body"><div class="chart" id="chart-stacked"></div></div>
+</details>
+
+<details class="card" id="tokens">
+  <summary><span class="chev">▸</span><span class="card-title">Tokens per turn</span><span class="card-summary">stacked bar (cache_read / creation / new input / output)</span></summary>
+  <div class="card-body"><div class="chart" id="chart-tokens"></div></div>
+</details>
+
+<details class="card" id="cost">
+  <summary><span class="chev">▸</span><span class="card-title">Cost vs cache hit rate</span><span class="card-summary">dual-axis bars + line</span></summary>
+  <div class="card-body"><div class="chart" id="chart-cost"></div></div>
+</details>
+
+<div class="footer">cc-debrief — local, no upload, no LLM</div>
+</main>
+
+<script src="main.js"></script>
+</body>
+</html>

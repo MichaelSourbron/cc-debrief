@@ -19,6 +19,7 @@
     "start": "tsx cli/index.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc && node scripts/copy-assets.mjs",
+    "build:web": "node scripts/build-web.mjs",
     "prepack": "npm run build"
   },
   "keywords": [
