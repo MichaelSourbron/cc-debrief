@@ -501,6 +501,7 @@ function init(): void {
 
   folderBtn.addEventListener("click", async () => {
     setError("");
+    hideSessionPicker();
     let pairs: FilePathPair[];
     try {
       pairs = await pickFolder();
@@ -510,14 +511,15 @@ function init(): void {
     }
     if (pairs.length === 0) return;
     lastPickedFolder = pairs;
-    const jsonl = pickJsonlFromPairs(pairs);
-    if (jsonl) {
-      await processInput(jsonl, pairs).catch((err) => setError(String(err?.message ?? err)));
+
+    const jsonls = pairs.filter((p) => p.file.name.endsWith(".jsonl"));
+    if (jsonls.length === 1) {
+      await processInput(jsonls[0].file, pairs).catch((err) => setError(String(err?.message ?? err)));
+    } else if (jsonls.length > 1) {
+      showSessionPicker(jsonls, pairs);
     } else {
-      // Folder picked but no .jsonl in it (typical for ~/.claude/ which has projects/ subfolder).
-      // Inform user that CLAUDE.md/skill attribution is now armed; they need to pick a .jsonl next.
       setError(
-        "Folder loaded — CLAUDE.md and skill attribution armed. Now click \"Choose JSONL file\" to pick a session.",
+        'Folder loaded — CLAUDE.md and skill attribution armed. Now click "Choose JSONL file" to pick a session.',
       );
     }
   });
@@ -571,6 +573,45 @@ function init(): void {
 
 function pickJsonlFromPairs(pairs: FilePathPair[]): File | null {
   return pairs.find((p) => p.file.name.endsWith(".jsonl"))?.file ?? null;
+}
+
+function hideSessionPicker(): void {
+  const el = document.getElementById("session-picker")!;
+  el.hidden = true;
+  document.getElementById("session-list")!.innerHTML = "";
+}
+
+function showSessionPicker(jsonls: FilePathPair[], allPairs: FilePathPair[]): void {
+  const fmtSize = (b: number) => {
+    if (b < 1024) return b + " B";
+    if (b < 1024 * 1024) return (b / 1024).toFixed(0) + " KB";
+    return (b / (1024 * 1024)).toFixed(1) + " MB";
+  };
+  // Sort by recency (largest mtime first); File.lastModified is ms epoch.
+  const sorted = [...jsonls].sort((a, b) => b.file.lastModified - a.file.lastModified);
+  const ol = document.getElementById("session-list")!;
+  ol.innerHTML = sorted
+    .map((p, i) => {
+      const date = new Date(p.file.lastModified).toISOString().slice(0, 16).replace("T", " ");
+      return (
+        '<li data-i="' + i + '">' +
+        '<span class="sess-name">' + escapeHtml(p.path) + "</span>" +
+        '<span class="sess-meta">' + fmtSize(p.file.size) + " · " + date + "</span>" +
+        "</li>"
+      );
+    })
+    .join("");
+  ol.querySelectorAll<HTMLElement>("li").forEach((li) => {
+    li.addEventListener("click", async () => {
+      const i = Number(li.getAttribute("data-i"));
+      const chosen = sorted[i];
+      hideSessionPicker();
+      await processInput(chosen.file, allPairs).catch((err) =>
+        setError(String(err?.message ?? err)),
+      );
+    });
+  });
+  document.getElementById("session-picker")!.hidden = false;
 }
 
 init();
