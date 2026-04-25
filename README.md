@@ -126,6 +126,90 @@ On Chrome/Edge the picker remembers your last location, so the second pick onwar
 
 ---
 
+## Walkthrough
+
+A tour of the report, generated from a real 9-day, 4,167-turn session.
+
+### Drop screen (web version)
+
+![Drop screen](web/screenshots/00-drop-screen.png)
+
+Pick the whole `~/.claude/` folder for full attribution (sortable session list + CLAUDE.md + skills), or a specific project subfolder for one project's sessions only. A single `.jsonl` works too for the most basic view. Nothing is uploaded — all parsing runs in your browser via `FileReader` + `showDirectoryPicker`.
+
+### 1. Hero — the headline
+
+![Hero panel](web/screenshots/01-hero.png)
+
+The single number you should care about first: **total cost (incl. subagents)** on the left, **biggest opportunity** on the right. Tagline summarises the session's shape — duration, turns, cache hit rate, subagents.
+
+### 2. Stat strip — eight at-a-glance numbers
+
+![Stat strip](web/screenshots/02-stats.png)
+
+Turns, total cost, input/output tokens, cache hit rate, model switches, wall-clock span, and idle gaps over 5 minutes (cache-expiry territory). Cards turn yellow when something is off.
+
+### 3. Insights — auto-generated findings
+
+![Insights panel](web/screenshots/03-insights.png)
+
+Each line is one finding. The `→` arrow boxes are concrete action items: *what to do* about the finding. Warnings (`!`) flag things costing real money; info (`○`) is context; ticks (`✓`) confirm healthy behaviour.
+
+### 4. Next session — things to try
+
+![Recommendations](web/screenshots/04-recs.png)
+
+A personalised checklist of up to 5 actions ranked by impact, each with a copy-paste snippet (CLAUDE.md, settings.json, slash command). Different sessions trigger different rules — a well-tuned session might show 2 items; a problematic one shows 5.
+
+### 5. Top 10 most expensive turns
+
+![Top 10 turns](web/screenshots/05-top-turns.png)
+
+The expensive turns surfaced with what you actually asked. Click any row to expand and see the assistant's reply preview, model, full timestamp. Now "turn #1278 cost $16.29" tells you what you were doing at the time.
+
+### 6. Focus turn — token attribution
+
+![Focus turn treemap](web/screenshots/06-treemap.png)
+
+Treemap of where the most expensive turn's input tokens came from: CLAUDE.md, skill listing, conversation history, this-turn input, system prompt + tool schemas residual. Subtitle carries the user prompt that triggered it.
+
+### 7. Token waste from repeated calls
+
+![Repeated reads + commands](web/screenshots/07-waste.png)
+
+The single most actionable signal: **files and commands invoked many times**. Top bars are usually the files Claude kept re-reading because nothing pinned them. The `Nx` badge on each bar is the call count.
+
+### 8. Tool result tokens by tool
+
+![Tools by token volume](web/screenshots/08-tools.png)
+
+Which tool returned the most tokens across the whole session. Hover for mean / max per call. If `Read` averages >5 KB/call, a PostToolUse hook to trim large outputs pays off.
+
+### 9. Time between turns
+
+![Idle gaps histogram](web/screenshots/09-idle.png)
+
+Histogram of inter-turn wall-clock gaps. Green = under 1 minute (cache stayed warm). Red and dark-red = over 5 minutes (cache likely expired). The subtitle tells you median, max, and the count of cache-killing gaps.
+
+### 10. Token attribution across turns
+
+![Stacked area attribution](web/screenshots/10-attribution.png)
+
+The same source breakdown as the treemap, but across every turn. Bands grow over time when conversation history accumulates. For long sessions the X axis is bucketed (each bar = N turns averaged) so it stays readable.
+
+### 11. Tokens per turn
+
+![Tokens per turn](web/screenshots/11-tokens.png)
+
+Stacked bar of cache_read (cheap), cache_creation (medium), new input (full price), and output. Visualises the "your context grew turn-over-turn" pattern.
+
+### 12. Cost vs cache hit rate
+
+![Cost vs cache hit](web/screenshots/12-cost.png)
+
+Dual-axis: purple bars are $/turn, green line is cache-hit %. When the line dips, costs spike — usually corresponds to a model switch, a fresh-cache turn, or an unusually large new input.
+
+---
+
 ## What the report shows
 
 | Section | What you learn |
