@@ -239,7 +239,7 @@ Dual-axis: purple bars are $/turn, green line is cache-hit %. When the line dips
 |---|---|
 | **Hero** | The headline number + biggest opportunity, in one glance. |
 | **Stat strip** | Turns, total cost, input/output tokens, cache hit rate, model switches, wall-clock span, idle gaps over 5 minutes. |
-| **Insights** | Auto-generated findings with `→` action items: most expensive turn, top tool, repeated reads, idle gaps, model switches, /compact events, API errors, cache TTL mix, hidden subagent cost. |
+| **Insights** | Auto-generated findings with `→` action items: most expensive turn, top tool, repeated reads, idle gaps, model switches, `/compact` events, API errors, cache TTL mix, hidden subagent cost, Read:Edit ratio, `stop_reason` distribution, per-model cost split, extended-thinking share. |
 | **Next session — things to try** | Up to 5 personalised action items with copy-paste snippets and estimated impact. Each session triggers different rules. |
 | **Top 10 most expensive turns** | Sortable table with the user prompt that triggered each turn, the tools called, and an expandable assistant reply preview. |
 | **Focus turn — token attribution** | Treemap of source breakdown for the most expensive turn. |
