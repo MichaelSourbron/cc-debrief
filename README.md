@@ -2,7 +2,7 @@
 
 > Post-session debrief for Claude Code transcripts. Find out where every token went — and what to change next session.
 
-**Live web app: [michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)** — drag-drop a session JSONL, see the report, no install.
+**Live web app: [michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)** — pick your `.claude` folder, see the report, no install.
 
 > 🛈 Built for use with Anthropic's [Claude Code](https://www.anthropic.com/claude-code). This is an **independent, unofficial third-party project** — not endorsed by or affiliated with Anthropic.
 
@@ -114,15 +114,18 @@ cc-debrief <session.jsonl> --out my-report.html
 
 > **[michaelsourbron.github.io/cc-debrief](https://michaelsourbron.github.io/cc-debrief/)**
 
-Drop a `.jsonl` onto the page (or pick your `.claude/` folder for full attribution). The same report renders in your browser. Nothing is uploaded — every byte of parsing happens client-side via `FileReader` + `showDirectoryPicker`.
+Click **Choose folder** and pick either:
 
-After picking the whole `.claude/` folder, you get a session list grouped by project, sorted by recency. Three actions per project:
+- Your full `~/.claude` folder — every session, plus `CLAUDE.md`, enabled skills, and `settings.json` for full per-source attribution.
+- A specific project folder under `~/.claude/projects/<project>/` — only that project's sessions; `CLAUDE.md` / skill attribution stays empty since those configs live one level up.
+
+Sessions are grouped by project. Three actions per project:
 
 - **Click the project name** → load its most recent session.
 - **Click `ALL`** → combine every session of that project into one cross-session report (useful for "this file was read 380× across 5 sessions" patterns).
 - **Click `▸`** → expand to pick a specific session.
 
-A **← Load another** button on the report header lets you go back to the picker without reloading the page.
+A **← Load another** button on the report header lets you go back to the picker without reloading the page. Nothing is uploaded — every byte of parsing happens client-side via `FileReader` + `showDirectoryPicker`. Power users can also drag-drop a single `.jsonl` directly onto the page.
 
 To run it locally instead:
 
@@ -152,7 +155,7 @@ A tour of the report, generated from a real 9-day, 4,167-turn session.
 
 ![Drop screen](web/screenshots/00-drop-screen.png)
 
-Pick the whole `~/.claude/` folder for full attribution (sortable session list + CLAUDE.md + skills), or a specific project subfolder for one project's sessions only. A single `.jsonl` works too for the most basic view. Nothing is uploaded — all parsing runs in your browser via `FileReader` + `showDirectoryPicker`.
+One picker, two valid scopes: the whole `~/.claude` folder for full attribution (sortable session list + CLAUDE.md + skills), or a specific project subfolder for one project's sessions only. Nothing is uploaded — all parsing runs in your browser via `FileReader` + `showDirectoryPicker`.
 
 After picking, sessions are **grouped by project** in a collapsible list. Click a project to load its most recent session, the **ALL** button to combine every session of that project into a single cross-session report, or **▸** to drill into a specific session. The report header has a **← Load another** button so you can pick a different session without reloading.
 
