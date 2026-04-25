@@ -27,6 +27,10 @@ jobs:
       - run: npm ci
       - run: npm run build:web
       - uses: actions/configure-pages@v5
+        with:
+          # Auto-enable Pages on the repo if it's not already on. Avoids the
+          # manual Settings → Pages step on the first run.
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist
