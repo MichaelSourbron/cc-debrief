@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>cc-debrief</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --fg: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    display: grid;
+    grid-template-columns: 200px minmax(0, 1fr);
+    min-height: 100vh;
+  }
+
+  /* sticky TOC */
+  aside.toc {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    padding: 24px 12px;
+    background: var(--bg);
+  }
+  aside.toc .brand { font-weight: 600; font-size: 13px; margin-bottom: 16px; padding: 0 8px; }
+  aside.toc nav { display: flex; flex-direction: column; gap: 2px; }
+  aside.toc a {
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    border-left: 2px solid transparent;
+  }
+  aside.toc a:hover { color: var(--fg); background: #1c2128; }
+  aside.toc a.active { color: var(--fg); border-left-color: var(--accent); background: #1c2128; }
+
+  main { padding: 24px; min-width: 0; }
+
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  .subtitle { color: var(--muted); font-size: 13px; margin-bottom: 20px; word-break: break-all; }
+
+  /* hero */
+  .hero {
+    background: linear-gradient(135deg, #1c2233, #161b22);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px 28px 24px;
+    margin-bottom: 16px;
+  }
+  .hero-row { display: flex; gap: 48px; flex-wrap: wrap; }
+  .hero-stat .hero-value {
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .hero-stat .hero-value.secondary { color: var(--accent); font-size: 32px; }
+  .hero-stat .hero-label { color: var(--muted); font-size: 13px; margin-top: 8px; }
+  .hero-tagline { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 13px; }
+
+  /* stat strip */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
+  .stat-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  .stat-value { font-size: 22px; font-weight: 600; }
+  .stat-sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  /* collapsible cards */
+  details.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+  }
+  details.card summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+  }
+  details.card summary::-webkit-details-marker { display: none; }
+  details.card summary .chev {
+    color: var(--muted);
+    transition: transform 0.15s;
+    width: 12px;
+    flex-shrink: 0;
+  }
+  details.card[open] summary .chev { transform: rotate(90deg); }
+  details.card summary .card-title { font-weight: 600; flex-shrink: 0; }
+  details.card summary .card-summary { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
+  details.card .card-body { padding: 0 16px 16px; }
+
+  /* insights */
+  .insights ul { margin: 0; padding-left: 0; list-style: none; }
+  .insights li { padding: 8px 0 8px 22px; position: relative; line-height: 1.5; }
+  .insights li::before { position: absolute; left: 0; top: 8px; font-size: 14px; }
+  .insights li.info::before { content: "○"; color: var(--accent); }
+  .insights li.good::before { content: "✓"; color: var(--good); }
+  .insights li.warn::before { content: "!"; color: var(--warn); font-weight: 700; }
+  .insights .action {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--accent);
+    background: #1a2230;
+    color: #c9d1d9;
+    font-size: 12.5px;
+    border-radius: 0 4px 4px 0;
+  }
+  .insights .action::before { content: "→ "; color: var(--accent); font-weight: 700; }
+
+  /* recommendations */
+  .rec-list { margin: 0; padding: 0; list-style: none; counter-reset: rec; }
+  .rec-list > li {
+    padding: 14px 18px 14px 56px;
+    position: relative;
+    border-bottom: 1px solid #21262d;
+    counter-increment: rec;
+  }
+  .rec-list > li:last-child { border-bottom: none; }
+  .rec-list > li::before {
+    content: counter(rec);
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0d1117;
+    font-weight: 700;
+    text-align: center;
+    line-height: 28px;
+    font-size: 13px;
+  }
+  .rec-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .rec-pattern { color: var(--muted); font-size: 12.5px; margin-bottom: 6px; }
+  .rec-why { color: #c9d1d9; font-size: 13px; margin-bottom: 10px; }
+  .rec-impact { color: var(--good); font-size: 12px; margin-top: 8px; font-weight: 500; }
+  .rec-impact::before { content: "▸ Impact: "; color: var(--muted); font-weight: 400; }
+  pre.snippet {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overflow-x: auto;
+    color: #c9d1d9;
+    margin: 6px 0 0;
+    white-space: pre;
+  }
+  .rec-empty { padding: 16px 18px; color: var(--muted); font-size: 13px; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 12px; border-bottom: 1px solid var(--border); }
+  td { padding: 8px 12px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.subject { color: #c9d1d9; word-break: break-word; }
+  td.tools { color: var(--accent); font-size: 12px; word-break: break-word; }
+  td.muted { color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  tr.row-detail td { padding: 12px 16px 16px 24px; background: #0e131a; border-bottom: 1px solid var(--border); }
+  tr.row-detail .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+  tr.row-detail .reply { color: #c9d1d9; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+  tr.clickable td:first-child::before { content: "▸"; color: var(--muted); display: inline-block; width: 12px; transition: transform 0.15s; }
+  tr.expanded td:first-child::before { transform: rotate(90deg); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #1c2128; }
+
+  .chart { height: 380px; }
+  .chart-tall { height: 420px; }
+  .warn { color: var(--warn); }
+  .good { color: var(--good); }
+  .footer { color: var(--muted); font-size: 11px; margin-top: 32px; text-align: center; padding-bottom: 24px; }
+
+  /* responsive: hide TOC on narrow screens */
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; }
+    aside.toc { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<aside class="toc">
+  <div class="brand">cc-debrief</div>
+  <nav id="toc-nav">
+    <a href="#hero">Overview</a>
+    <a href="#stats">Stats</a>
+    <a href="#insights">Insights</a>
+    <a href="#recs">Next session</a>
+    <a href="#top-turns">Top turns</a>
+    <a href="#treemap">Focus turn</a>
+    <a href="#waste">Token waste</a>
+    <a href="#tools">Tools</a>
+    <a href="#idle">Idle gaps</a>
+    <a href="#attribution">Attribution</a>
+    <a href="#tokens">Per-turn tokens</a>
+    <a href="#cost">Cost vs cache</a>
+  </nav>
+</aside>
+
+<main>
+<h1>cc-debrief</h1>
+<div class="subtitle" id="source-path">{{SOURCE_PATH}}</div>
+
+<section id="hero" class="hero">
+  <div class="hero-row">
+    <div class="hero-stat">
+      <div class="hero-value" id="hero-primary-value"></div>
+      <div class="hero-label" id="hero-primary-label"></div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-value secondary" id="hero-secondary-value"></div>
+      <div class="hero-label" id="hero-secondary-label"></div>
+    </div>
+  </div>
+  <div class="hero-tagline" id="hero-tagline"></div>
+</section>
+
+<section id="stats" class="strip"></section>
+
+<details class="card insights" id="insights" open>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Insights</span>
+    <span class="card-summary" id="insights-summary"></span>
+  </summary>
+  <div class="card-body"><ul id="insights-list"></ul></div>
+</details>
+
+<details class="card" id="recs" open>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Next session — things to try</span>
+    <span class="card-summary" id="recs-summary"></span>
+  </summary>
+  <div class="card-body" style="padding:0">
+    <ol class="rec-list" id="recs-list"></ol>
+  </div>
+</details>
+
+<details class="card" id="top-turns" open>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Top 10 most expensive turns</span>
+    <span class="card-summary">click any row for details</span>
+  </summary>
+  <div class="card-body" style="overflow-x: auto;">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">#</th>
+          <th class="num" style="width:80px">Cost</th>
+          <th class="num" style="width:90px">Input</th>
+          <th class="num" style="width:80px">Cache</th>
+          <th style="width:auto">Subject</th>
+          <th style="width:25%">Tools called</th>
+        </tr>
+      </thead>
+      <tbody id="top-turns-body"></tbody>
+    </table>
+  </div>
+</details>
+
+<details class="card" id="treemap" open>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Focus turn — token attribution</span>
+    <span class="card-summary">treemap of source breakdown for the most expensive turn</span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-treemap"></div></div>
+</details>
+
+<details class="card" id="waste" open>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Token waste from repeated calls</span>
+    <span class="card-summary" id="waste-summary"></span>
+  </summary>
+  <div class="card-body">
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+      <div class="chart chart-tall" id="chart-rep-files"></div>
+      <div class="chart chart-tall" id="chart-rep-cmds"></div>
+    </div>
+  </div>
+</details>
+
+<details class="card" id="tools">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Tool result tokens by tool</span>
+    <span class="card-summary" id="tools-summary"></span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-tools"></div></div>
+</details>
+
+<details class="card" id="idle">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Time between turns</span>
+    <span class="card-summary" id="idle-summary"></span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-idle"></div></div>
+</details>
+
+<details class="card" id="attribution">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Token attribution across turns</span>
+    <span class="card-summary">stacked area, bucketed for long sessions</span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-stacked"></div></div>
+</details>
+
+<details class="card" id="tokens">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Tokens per turn</span>
+    <span class="card-summary">stacked bar (cache_read / creation / new input / output)</span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-tokens"></div></div>
+</details>
+
+<details class="card" id="cost">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Cost vs cache hit rate</span>
+    <span class="card-summary">dual-axis bars + line</span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-cost"></div></div>
+</details>
+
+<div class="footer">v0.1 · attribution: CLAUDE.md + skills + history + this-turn + residual</div>
+</main>
+
+<script>
+const __DATA__ = /*__DATA__*/null/*__END__*/;
+
+function fmt(n) { return Number(n).toLocaleString("en-US"); }
+function fmtUsd(n) { return "$" + Number(n).toFixed(2); }
+function fmtDuration(ms) {
+  if (!ms || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m " + (s % 60) + "s";
+  const h = Math.floor(m / 60);
+  return h + "h " + (m % 60) + "m";
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function renderHero(h) {
+  document.getElementById("hero-primary-value").textContent = h.primaryValue;
+  document.getElementById("hero-primary-label").textContent = h.primaryLabel;
+  document.getElementById("hero-secondary-value").textContent = h.secondaryValue;
+  document.getElementById("hero-secondary-label").textContent = h.secondaryLabel;
+  document.getElementById("hero-tagline").textContent = h.tagline;
+}
+
+function renderStrip(s) {
+  const cells = [
+    { label: "Turns", value: fmt(s.turns) },
+    { label: "Total cost", value: fmtUsd(s.costUsd), sub: s.cacheHitRate >= 0.85 ? "cache hit good" : "cache hit low" },
+    { label: "Input tokens", value: fmt(s.totalInputTokens) },
+    { label: "Output tokens", value: fmt(s.outputTokens) },
+    { label: "Cache hit rate", value: (s.cacheHitRate * 100).toFixed(1) + "%", sub: s.cacheHitRate >= 0.85 ? "" : "below 85% — investigate", warn: s.cacheHitRate < 0.85 },
+    { label: "Models", value: String(s.models.length), sub: s.modelSwitches > 0 ? s.modelSwitches + " switches" : "no switches", warn: s.modelSwitches > 0 },
+    { label: "Wall clock", value: fmtDuration(s.wallClockMs), sub: s.maxGapMs > 0 ? "max gap " + fmtDuration(s.maxGapMs) : "" },
+    { label: "Idle gaps >5 min", value: String(s.longGapsCount), sub: s.longGapsCount > 0 ? "cache likely expired" : "cache stayed warm", warn: s.longGapsCount > 0 },
+  ];
+  document.getElementById("stats").innerHTML = cells
+    .map((c) =>
+      '<div class="stat"><div class="stat-label">' + c.label + '</div>' +
+      '<div class="stat-value' + (c.warn ? " warn" : "") + '">' + c.value + "</div>" +
+      (c.sub ? '<div class="stat-sub">' + c.sub + "</div>" : "") + "</div>",
+    )
+    .join("");
+}
+
+function renderInsights(items) {
+  const ul = document.getElementById("insights-list");
+  ul.innerHTML = items
+    .map((it) => {
+      const action = it.action ? '<div class="action">' + escapeHtml(it.action) + "</div>" : "";
+      return '<li class="' + it.level + '">' + escapeHtml(it.text) + action + "</li>";
+    })
+    .join("");
+  const warns = items.filter((i) => i.level === "warn").length;
+  document.getElementById("insights-summary").textContent =
+    items.length + " findings" + (warns > 0 ? " · " + warns + " warning" + (warns === 1 ? "" : "s") : "");
+}
+
+function renderTopTurns(rows) {
+  const tbody = document.getElementById("top-turns-body");
+  tbody.innerHTML = rows
+    .map((r, i) => {
+      const ts = r.timestamp.replace("T", " ").replace(/\..*/, "");
+      const tools = r.toolsCalled && r.toolsCalled.length ? r.toolsCalled.join(" · ") : "—";
+      const cacheHit = (r.cacheHitRate * 100).toFixed(1) + "%";
+      const summaryRow =
+        '<tr class="clickable" data-row="' + i + '">' +
+        "<td>#" + r.index + "</td>" +
+        '<td class="num">$' + r.costUsd.toFixed(4) + "</td>" +
+        '<td class="num">' + fmt(r.totalInput) + "</td>" +
+        '<td class="num">' + cacheHit + "</td>" +
+        '<td class="subject">' + escapeHtml(r.subject) + "</td>" +
+        '<td class="tools">' + escapeHtml(tools) + "</td>" +
+        "</tr>";
+      const detailRow =
+        '<tr class="row-detail" data-detail="' + i + '" style="display:none">' +
+        '<td colspan="6">' +
+        '<div class="label">Assistant reply preview</div>' +
+        '<div class="reply">' + (r.assistantPreview ? escapeHtml(r.assistantPreview) : "<em>(no text reply — tool-only turn)</em>") + "</div>" +
+        '<div class="label" style="margin-top:10px">Model · Timestamp</div>' +
+        '<div class="muted">' + escapeHtml(r.model) + " · " + escapeHtml(ts) + "</div>" +
+        "</td></tr>";
+      return summaryRow + detailRow;
+    })
+    .join("");
+  tbody.querySelectorAll("tr.clickable").forEach((tr) => {
+    tr.addEventListener("click", () => {
+      const i = tr.getAttribute("data-row");
+      const detail = tbody.querySelector('tr[data-detail="' + i + '"]');
+      const open = detail.style.display !== "none";
+      detail.style.display = open ? "none" : "table-row";
+      tr.classList.toggle("expanded", !open);
+    });
+  });
+}
+
+function setSummaries(d) {
+  if (d.repeatedCalls) {
+    const f = d.repeatedCalls.byFile.length, c = d.repeatedCalls.byCommand.length;
+    document.getElementById("waste-summary").textContent =
+      "~" + fmt(d.repeatedCalls.totalWastedTokens) + " tok wasted · " + f + " hot files, " + c + " repeated commands";
+  }
+  if (d.toolUsageRows && d.toolUsageRows[0]) {
+    const top = d.toolUsageRows[0];
+    document.getElementById("tools-summary").textContent =
+      "top: " + top.name + " " + fmt(top.resultTokens) + " tok / " + top.calls + " calls";
+  }
+  if (d.wallClock) {
+    document.getElementById("idle-summary").textContent =
+      d.wallClock.gaps.length + " gaps · " + d.wallClock.longGapsCount + " over 5 min";
+  }
+}
+
+function renderRecommendations(recs) {
+  const ol = document.getElementById("recs-list");
+  if (!recs || recs.length === 0) {
+    ol.outerHTML = '<div class="rec-empty">No specific recommendations — your session looks well-tuned.</div>';
+    document.getElementById("recs-summary").textContent = "no specific recommendations";
+    return;
+  }
+  ol.innerHTML = recs
+    .map((r) => {
+      const snippet = r.snippet
+        ? '<pre class="snippet">' + escapeHtml(r.snippet) + "</pre>"
+        : "";
+      return (
+        "<li>" +
+        '<div class="rec-title">' + escapeHtml(r.title) + "</div>" +
+        '<div class="rec-pattern">' + escapeHtml(r.pattern) + "</div>" +
+        '<div class="rec-why">' + escapeHtml(r.why) + "</div>" +
+        snippet +
+        '<div class="rec-impact">' + escapeHtml(r.estimatedImpact) + "</div>" +
+        "</li>"
+      );
+    })
+    .join("");
+  document.getElementById("recs-summary").textContent =
+    recs.length + " action" + (recs.length === 1 ? "" : "s") + " to try";
+}
+
+renderHero(__DATA__.hero);
+renderStrip(__DATA__.topStrip);
+renderInsights(__DATA__.insights);
+renderRecommendations(__DATA__.recommendations);
+renderTopTurns(__DATA__.topTurns);
+setSummaries(__DATA__);
+
+// ECharts init — note that charts inside <details> still render eagerly because
+// <details open> is the default; we just call resize when their container becomes
+// visible if a user collapses then re-opens.
+const charts = {
+  "chart-treemap": __DATA__.treemap,
+  "chart-tools": __DATA__.toolUsage,
+  "chart-rep-files": __DATA__.repeatedFiles,
+  "chart-rep-cmds": __DATA__.repeatedCommands,
+  "chart-idle": __DATA__.idleGaps,
+  "chart-stacked": __DATA__.stackedArea,
+  "chart-tokens": __DATA__.tokensPerTurn,
+  "chart-cost": __DATA__.costAndCache,
+};
+for (const [id, opt] of Object.entries(charts)) {
+  const el = document.getElementById(id);
+  if (el && opt) echarts.init(el, "dark").setOption(opt);
+}
+
+// Resize charts when their <details> toggles open (containers were 0×0 before).
+document.querySelectorAll("details.card").forEach((d) => {
+  d.addEventListener("toggle", () => {
+    if (!d.open) return;
+    d.querySelectorAll(".chart").forEach((el) => {
+      const inst = echarts.getInstanceByDom(el);
+      if (inst) inst.resize();
+    });
+  });
+});
+
+// Window-resize: keep all charts responsive.
+window.addEventListener("resize", () => {
+  document.querySelectorAll(".chart").forEach((el) => {
+    const inst = echarts.getInstanceByDom(el);
+    if (inst) inst.resize();
+  });
+});
+
+// Sticky TOC scroll-spy.
+const tocLinks = [...document.querySelectorAll("#toc-nav a")];
+const sections = tocLinks
+  .map((a) => document.querySelector(a.getAttribute("href")))
+  .filter(Boolean);
+const linkByHash = Object.fromEntries(tocLinks.map((a) => [a.getAttribute("href"), a]));
+
+// When the user clicks a TOC link, expand the target <details> first so the
+// browser's anchor-scroll lands on actual content, not a collapsed summary.
+tocLinks.forEach((link) => {
+  link.addEventListener("click", (e) => {
+    const href = link.getAttribute("href");
+    const target = document.querySelector(href);
+    if (target && target.tagName === "DETAILS" && !target.open) {
+      target.open = true;
+      // Fire toggle so any ECharts inside resize to their now-visible container.
+      target.dispatchEvent(new Event("toggle"));
+      // Force a re-scroll on the next frame, since the layout grew after expanding.
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      e.preventDefault();
+    }
+  });
+});
+
+const observer = new IntersectionObserver(
+  (entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        tocLinks.forEach((a) => a.classList.remove("active"));
+        const a = linkByHash["#" + e.target.id];
+        if (a) a.classList.add("active");
+      }
+    }
+  },
+  { rootMargin: "-40% 0px -55% 0px", threshold: 0 },
+);
+sections.forEach((s) => observer.observe(s));
+</script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+{
+  "name": "cc-debrief",
+  "version": "0.1.0",
+  "description": "Post-session debrief for Claude Code transcripts. Generates a local HTML report with per-source token attribution, repeated-call detection, idle-gap analysis, and a personalized 'next session' checklist with copy-paste fixes.",
+  "type": "module",
+  "bin": {
+    "cc-debrief": "dist/cli/index.js"
+  },
+  "main": "dist/cli/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx cli/index.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && node scripts/copy-assets.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "claude-code",
+    "claude",
+    "anthropic",
+    "tokens",
+    "cost",
+    "attribution",
+    "observability",
+    "jsonl",
+    "transcript"
+  ],
+  "author": "Michael Sourbron <michael.sourbron@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20",
+    "esbuild": "^0.28.0",
+    "tsx": "^4",
+    "typescript": "^5"
+  }
+}
