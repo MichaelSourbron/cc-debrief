@@ -472,6 +472,12 @@ async function renderFromRecords(
     corrections,
   );
 
+  // Make the report container visible BEFORE initCharts. ECharts measures the
+  // container at init time; a hidden (display:none) container is 0×0 and the
+  // chart renders empty. The toggle handler later resizes when a collapsed
+  // <details> is expanded, but cards that start open never trigger toggle.
+  document.body.classList.add("has-data");
+
   document.getElementById("source-path")!.textContent = sourceLabel;
   renderHero(data.hero);
   renderStrip(data.topStrip);
@@ -482,7 +488,6 @@ async function renderFromRecords(
   initCharts(data);
   setupInteractivity();
 
-  document.body.classList.add("has-data");
   window.scrollTo({ top: 0 });
 }
 
