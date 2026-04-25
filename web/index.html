@@ -81,6 +81,36 @@
     color: var(--accent);
     font: 11px ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
+  .drop .hint-list {
+    max-width: 540px;
+    margin: 8px auto 16px;
+    padding: 0;
+    list-style: none;
+    text-align: left;
+  }
+  .drop .hint-list li {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 12.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .drop .hint-list li strong { color: var(--fg); }
+  .drop .badge {
+    display: inline-block;
+    background: var(--good);
+    color: #0d1117;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
   .session-picker {
     width: 100%;
     max-width: 540px;
@@ -250,20 +280,28 @@
     <input type="file" id="file-input" accept=".jsonl,application/json" />
   </div>
   <p class="hint">
-    <strong style="color:var(--fg)">Recommended:</strong> pick the whole <code>~/.claude</code> folder.
-    The picker walks it client-side and finds:
-    every session JSONL, your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
-    You'll get a sortable list of sessions to pick from, plus full per-source attribution
-    (CLAUDE.md + skill listing + history + this-turn + residual).
+    <strong style="color:var(--fg)">Two folders that work:</strong>
   </p>
+  <ul class="hint-list">
+    <li>
+      <strong>The full <code>~/.claude</code> folder</strong> <span class="badge">recommended</span><br/>
+      Walks every session JSONL plus your <code>CLAUDE.md</code>, all enabled skills, and <code>settings.json</code>.
+      You get a sortable list of every session to pick from, with full per-source attribution.
+    </li>
+    <li>
+      <strong>A specific project folder</strong> under <code>~/.claude/projects/&lt;project&gt;/</code><br/>
+      Only that project's sessions appear in the list. CLAUDE.md and skill attribution stay empty
+      since those configs live one level up.
+    </li>
+  </ul>
   <p class="hint">
-    Sessions live at:<br/>
+    Folder paths:<br/>
     <code>%USERPROFILE%\.claude</code> (Windows)<br/>
     <code>~/.claude</code> (macOS, Linux)<br/>
     <span style="color:var(--muted)">Browsers can't auto-navigate to a specific path for security reasons. On Chrome/Edge, the picker remembers your last location after the first pick.</span>
   </p>
   <p class="hint" style="font-size:11.5px;color:var(--muted)">
-    Smaller picks also work: a single project folder under <code>projects/</code> for one project's sessions, or a single <code>.jsonl</code> for the most basic view.
+    A single <code>.jsonl</code> file also works — it gives the most basic view (no CLAUDE.md / skill attribution).
   </p>
 
   <!-- Session list (shown when multiple .jsonl files are in the picked folder) -->
