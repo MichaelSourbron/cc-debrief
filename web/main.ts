@@ -11,6 +11,10 @@ import {
   analyzeSubagents,
   analyzeSkillUsage,
   countCorrectionTurns,
+  analyzeToolErrors,
+  analyzeLanguages,
+  analyzeTimeOfDay,
+  analyzeMultiClauding,
   type IndexedSources,
 } from "../core/parser.js";
 import { tokenCount } from "../core/tokenize.js";
@@ -201,10 +205,134 @@ function initCharts(d: ReportData): void {
     "chart-tokens": d.tokensPerTurn,
     "chart-cost": d.costAndCache,
   };
+  if (d.toolErrorsChart) charts["chart-tool-errors"] = d.toolErrorsChart;
+  if (d.languagesChart) charts["chart-languages"] = d.languagesChart;
   for (const [id, opt] of Object.entries(charts)) {
     const el = document.getElementById(id);
     if (el && opt) echarts.init(el, "dark").setOption(opt);
   }
+}
+
+// Time-of-day chart: data is 24 UTC hour counts; user picks a timezone offset
+// and we rotate the array to render local-time buckets. Re-rendered on TZ change.
+function buildTimeOfDayChartOption(hourCountsUtc: number[], tzOffsetHours: number): unknown {
+  const local = new Array<number>(24).fill(0);
+  for (let h = 0; h < 24; h++) {
+    const localHour = ((h + tzOffsetHours) % 24 + 24) % 24;
+    local[localHour] = hourCountsUtc[h];
+  }
+  const labels = local.map((_, i) => `${String(i).padStart(2, "0")}h`);
+  return {
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    grid: { left: 50, right: 30, top: 20, bottom: 40 },
+    xAxis: { type: "category", data: labels, axisLabel: { color: "#8b949e", fontSize: 10 } },
+    yAxis: { type: "value", name: "messages", axisLabel: { color: "#8b949e" } },
+    series: [
+      {
+        type: "bar",
+        itemStyle: { color: "#8957e5" },
+        data: local,
+      },
+    ],
+  };
+}
+
+function renderTimeOfDay(d: ReportData): void {
+  const counts = d.timeOfDay.hourCountsUtc;
+  const summary = document.getElementById("time-of-day-summary")!;
+  summary.textContent = `${d.timeOfDay.totalUserMessages} user message${d.timeOfDay.totalUserMessages === 1 ? "" : "s"}`;
+  const select = document.getElementById("tz-select") as HTMLSelectElement | null;
+  const el = document.getElementById("chart-time-of-day");
+  if (!el || !select) return;
+  const inst = echarts.init(el, "dark");
+  const apply = () => {
+    const offset = parseFloat(select.value);
+    inst.setOption(buildTimeOfDayChartOption(counts, offset));
+  };
+  apply();
+  select.addEventListener("change", apply);
+}
+
+function renderToolErrors(d: ReportData): void {
+  const card = document.getElementById("tool-errors");
+  const tocLink = document.getElementById("toc-tool-errors");
+  if (!card) return;
+  if (d.toolErrors.total === 0) {
+    card.hidden = true;
+    if (tocLink) tocLink.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (tocLink) tocLink.hidden = false;
+  const summary = document.getElementById("tool-errors-summary")!;
+  const top = d.toolErrors.byCategory[0];
+  summary.textContent = `${d.toolErrors.total} error${d.toolErrors.total === 1 ? "" : "s"} · top: ${top.label} ×${top.count}`;
+}
+
+function renderLanguages(d: ReportData): void {
+  const card = document.getElementById("languages");
+  const tocLink = document.getElementById("toc-languages");
+  if (!card) return;
+  if (d.languages.length === 0) {
+    card.hidden = true;
+    if (tocLink) tocLink.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (tocLink) tocLink.hidden = false;
+  const summary = document.getElementById("languages-summary")!;
+  const top = d.languages[0];
+  summary.textContent = `${d.languages.length} language${d.languages.length === 1 ? "" : "s"} · top: ${top.language} (${top.calls} calls, ${top.files} files)`;
+}
+
+function renderMultiClauding(d: ReportData): void {
+  const card = document.getElementById("multi-clauding");
+  const tocLink = document.getElementById("toc-multi-clauding");
+  if (!card) return;
+  if (!d.multiClauding) {
+    card.hidden = true;
+    if (tocLink) tocLink.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (tocLink) tocLink.hidden = false;
+  const m = d.multiClauding;
+  const summary = document.getElementById("multi-clauding-summary")!;
+  summary.textContent = m.overlapEvents > 0
+    ? `${m.overlapEvents} overlap event${m.overlapEvents === 1 ? "" : "s"} · ${m.sessionsInvolved}/${m.sessionCount} sessions`
+    : `${m.sessionCount} sessions, no overlaps`;
+  const stats = document.getElementById("multi-clauding-stats")!;
+  const dateRange = (() => {
+    const wc = d.wallClock;
+    if (!wc.startTimestamp || !wc.endTimestamp) return null;
+    const fmtDate = (s: string) => s.slice(0, 10);
+    return fmtDate(wc.startTimestamp) + " → " + fmtDate(wc.endTimestamp);
+  })();
+  type Cell = { label: string; value: string; sub?: string; warn?: boolean };
+  const cells: Cell[] = [
+    { label: "Sessions", value: String(m.sessionCount) },
+    {
+      label: "Date range",
+      value: dateRange ?? "—",
+      sub: d.wallClock.totalSpanMs > 0 ? fmtDuration(d.wallClock.totalSpanMs) + " span" : "",
+    },
+    { label: "Overlap events", value: String(m.overlapEvents), warn: m.overlapEvents > 0 },
+    { label: "Sessions involved", value: String(m.sessionsInvolved) },
+    {
+      label: "Messages in overlap",
+      value: fmt(m.messagesInOverlap),
+      sub: m.totalMessages > 0 ? m.overlapPct.toFixed(1) + "% of total" : "",
+    },
+    { label: "Total messages", value: fmt(m.totalMessages) },
+  ];
+  stats.innerHTML = cells
+    .map(
+      (c) =>
+        '<div class="stat"><div class="stat-label">' + c.label + "</div>" +
+        '<div class="stat-value' + (c.warn ? " warn" : "") + '">' + c.value + "</div>" +
+        (c.sub ? '<div class="stat-sub">' + c.sub + "</div>" : "") + "</div>",
+    )
+    .join("");
 }
 
 function setupInteractivity(): void {
@@ -430,7 +558,14 @@ async function processProjectCombined(
   const allRecords: unknown[] = [];
   for (const sess of sorted) {
     const text = await sess.file.text();
-    allRecords.push(...parseJsonl(text));
+    const sid = sess.file.name.replace(/\.jsonl$/i, "");
+    const parsed = parseJsonl(text);
+    // Tag every record with its origin session so analyzers (multi-clauding,
+    // future per-session breakdowns) can reconstruct boundaries after merge.
+    for (const r of parsed) {
+      if (r && typeof r === "object") (r as Record<string, unknown>).__sessionId = sid;
+    }
+    allRecords.push(...parsed);
   }
   const sessionCwd = findSessionCwd(allRecords);
   const sources = await buildSourcesFromPairs(configPairs, sessionCwd);
@@ -457,6 +592,10 @@ async function renderFromRecords(
   const subagents = analyzeSubagents(records);
   const invokedSkills = analyzeSkillUsage(records);
   const corrections = countCorrectionTurns(turns);
+  const toolErrors = analyzeToolErrors(records);
+  const languages = analyzeLanguages(records);
+  const timeOfDay = analyzeTimeOfDay(records);
+  const multiClauding = analyzeMultiClauding(records);
 
   const data = buildReportData(
     turns,
@@ -470,6 +609,10 @@ async function renderFromRecords(
     sources,
     invokedSkills,
     corrections,
+    toolErrors,
+    languages,
+    timeOfDay,
+    multiClauding,
   );
 
   // Make the report container visible BEFORE initCharts. ECharts measures the
@@ -481,11 +624,15 @@ async function renderFromRecords(
   document.getElementById("source-path")!.textContent = sourceLabel;
   renderHero(data.hero);
   renderStrip(data.topStrip);
+  renderMultiClauding(data);
   renderInsights(data.insights);
   renderRecommendations(data.recommendations);
   renderTopTurns(data.topTurns);
+  renderToolErrors(data);
+  renderLanguages(data);
   setSummaries(data);
   initCharts(data);
+  renderTimeOfDay(data);
   setupInteractivity();
 
   window.scrollTo({ top: 0 });

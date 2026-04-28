@@ -217,8 +217,11 @@
     <a href="#top-turns">Top turns</a>
     <a href="#treemap">Focus turn</a>
     <a href="#waste">Token waste</a>
+    <a href="#languages" id="toc-languages" hidden>Languages</a>
     <a href="#tools">Tools</a>
+    <a href="#tool-errors" id="toc-tool-errors" hidden>Tool errors</a>
     <a href="#idle">Idle gaps</a>
+    <a href="#time-of-day">Time of day</a>
     <a href="#attribution">Attribution</a>
     <a href="#tokens">Per-turn tokens</a>
     <a href="#cost">Cost vs cache</a>
@@ -244,6 +247,36 @@
 </section>
 
 <section id="stats" class="strip"></section>
+
+<details class="card" id="multi-clauding" hidden>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Parallel sessions detected</span>
+    <span class="card-summary" id="multi-clauding-summary"></span>
+  </summary>
+  <div class="card-body">
+    <div class="strip" id="multi-clauding-stats" style="margin-bottom:12px"></div>
+    <div class="rec-pattern" style="font-size:12.5px; color:var(--muted)">
+      Multi-clauding is detected when sessions overlap in time, suggesting parallel workflows
+      (e.g. you opened a second Claude Code window while the first was still running).
+      Long overlap shares can mean unintended duplicate work.
+    </div>
+  </div>
+</details>
+
+<details class="card" id="llm-narrative" hidden>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Workflow narrative <span style="font-size:10px;color:var(--muted);font-weight:400;letter-spacing:0.06em;text-transform:uppercase;margin-left:8px">via Ollama</span></span>
+    <span class="card-summary" id="llm-narrative-summary"></span>
+  </summary>
+  <div class="card-body">
+    <div id="llm-narrative-text" style="font-size:14px;line-height:1.65;color:#c9d1d9"></div>
+    <div style="margin-top:14px;font-size:11px;color:var(--muted)">
+      Generated locally via Ollama. Default cc-debrief is 100% deterministic — this card only appears when you pass <code>--with-ollama</code>.
+    </div>
+  </div>
+</details>
 
 <details class="card insights" id="insights" open>
   <summary>
@@ -311,6 +344,15 @@
   </div>
 </details>
 
+<details class="card" id="languages" hidden>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Languages touched</span>
+    <span class="card-summary" id="languages-summary"></span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-languages"></div></div>
+</details>
+
 <details class="card" id="tools">
   <summary>
     <span class="chev">▸</span>
@@ -320,6 +362,15 @@
   <div class="card-body"><div class="chart" id="chart-tools"></div></div>
 </details>
 
+<details class="card" id="tool-errors" hidden>
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">Tool errors encountered</span>
+    <span class="card-summary" id="tool-errors-summary"></span>
+  </summary>
+  <div class="card-body"><div class="chart" id="chart-tool-errors"></div></div>
+</details>
+
 <details class="card" id="idle">
   <summary>
     <span class="chev">▸</span>
@@ -327,6 +378,27 @@
     <span class="card-summary" id="idle-summary"></span>
   </summary>
   <div class="card-body"><div class="chart" id="chart-idle"></div></div>
+</details>
+
+<details class="card" id="time-of-day">
+  <summary>
+    <span class="chev">▸</span>
+    <span class="card-title">User messages by time of day</span>
+    <span class="card-summary" id="time-of-day-summary"></span>
+  </summary>
+  <div class="card-body">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; font-size:12px; color:var(--muted)">
+      <span>Timezone:</span>
+      <select id="tz-select" style="background:#1c2128; border:1px solid var(--border); color:var(--fg); padding:4px 8px; border-radius:4px; font-size:12px">
+        <option value="-8">PT (UTC-8)</option>
+        <option value="-5">ET (UTC-5)</option>
+        <option value="0">UTC (UTC+0)</option>
+        <option value="1" selected>CET (UTC+1)</option>
+        <option value="9">JST (UTC+9)</option>
+      </select>
+    </div>
+    <div class="chart" id="chart-time-of-day"></div>
+  </div>
 </details>
 
 <details class="card" id="attribution">
@@ -508,11 +580,134 @@ function renderRecommendations(recs) {
     recs.length + " action" + (recs.length === 1 ? "" : "s") + " to try";
 }
 
+function fmtDuration(ms) {
+  if (!ms || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m " + (s % 60) + "s";
+  const h = Math.floor(m / 60);
+  return h + "h " + (m % 60) + "m";
+}
+
+function renderMultiClauding(d) {
+  const card = document.getElementById("multi-clauding");
+  if (!card) return;
+  if (!d.multiClauding) { card.hidden = true; return; }
+  card.hidden = false;
+  const m = d.multiClauding;
+  document.getElementById("multi-clauding-summary").textContent = m.overlapEvents > 0
+    ? m.overlapEvents + " overlap event" + (m.overlapEvents === 1 ? "" : "s") + " · " + m.sessionsInvolved + "/" + m.sessionCount + " sessions"
+    : m.sessionCount + " sessions, no overlaps";
+  const wc = d.wallClock;
+  const dateRange = (wc && wc.startTimestamp && wc.endTimestamp)
+    ? wc.startTimestamp.slice(0, 10) + " → " + wc.endTimestamp.slice(0, 10)
+    : "—";
+  const cells = [
+    { label: "Sessions", value: String(m.sessionCount) },
+    { label: "Date range", value: dateRange, sub: wc && wc.totalSpanMs > 0 ? fmtDuration(wc.totalSpanMs) + " span" : "" },
+    { label: "Overlap events", value: String(m.overlapEvents), warn: m.overlapEvents > 0 },
+    { label: "Sessions involved", value: String(m.sessionsInvolved) },
+    { label: "Messages in overlap", value: fmt(m.messagesInOverlap), sub: m.totalMessages > 0 ? m.overlapPct.toFixed(1) + "% of total" : "" },
+    { label: "Total messages", value: fmt(m.totalMessages) },
+  ];
+  document.getElementById("multi-clauding-stats").innerHTML = cells.map(c =>
+    '<div class="stat"><div class="stat-label">' + c.label + '</div>' +
+    '<div class="stat-value' + (c.warn ? ' warn' : '') + '">' + c.value + '</div>' +
+    (c.sub ? '<div class="stat-sub">' + c.sub + '</div>' : '') + '</div>'
+  ).join("");
+}
+
+function renderLlmNarrative(d) {
+  const card = document.getElementById("llm-narrative");
+  if (!card) return;
+  const insights = d.llmInsights;
+  if (!insights || !insights.narrative) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  document.getElementById("llm-narrative-text").textContent = insights.narrative;
+  const summary = document.getElementById("llm-narrative-summary");
+  if (summary) summary.textContent = "via local Ollama";
+}
+
+function renderToolErrors(d) {
+  const card = document.getElementById("tool-errors");
+  const tocLink = document.getElementById("toc-tool-errors");
+  if (!card) return;
+  if (!d.toolErrors || d.toolErrors.total === 0) {
+    card.hidden = true;
+    if (tocLink) tocLink.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (tocLink) tocLink.hidden = false;
+  const top = d.toolErrors.byCategory[0];
+  document.getElementById("tool-errors-summary").textContent =
+    d.toolErrors.total + " error" + (d.toolErrors.total === 1 ? "" : "s") + " · top: " + top.label + " ×" + top.count;
+}
+
+function renderLanguages(d) {
+  const card = document.getElementById("languages");
+  const tocLink = document.getElementById("toc-languages");
+  if (!card) return;
+  if (!d.languages || d.languages.length === 0) {
+    card.hidden = true;
+    if (tocLink) tocLink.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  if (tocLink) tocLink.hidden = false;
+  const top = d.languages[0];
+  document.getElementById("languages-summary").textContent =
+    d.languages.length + " language" + (d.languages.length === 1 ? "" : "s") + " · top: " + top.language + " (" + top.calls + " calls, " + top.files + " files)";
+}
+
+function buildTimeOfDayChartOption(hourCountsUtc, tzOffsetHours) {
+  const local = new Array(24).fill(0);
+  for (let h = 0; h < 24; h++) {
+    const localHour = ((h + tzOffsetHours) % 24 + 24) % 24;
+    local[localHour] = hourCountsUtc[h];
+  }
+  const labels = local.map((_, i) => String(i).padStart(2, "0") + "h");
+  return {
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    grid: { left: 50, right: 30, top: 20, bottom: 40 },
+    xAxis: { type: "category", data: labels, axisLabel: { color: "#8b949e", fontSize: 10 } },
+    yAxis: { type: "value", name: "messages", axisLabel: { color: "#8b949e" } },
+    series: [{ type: "bar", itemStyle: { color: "#8957e5" }, data: local }],
+  };
+}
+
+function renderTimeOfDay(d) {
+  const tod = d.timeOfDay;
+  if (!tod) return;
+  const summary = document.getElementById("time-of-day-summary");
+  if (summary) {
+    summary.textContent = tod.totalUserMessages + " user message" + (tod.totalUserMessages === 1 ? "" : "s");
+  }
+  const select = document.getElementById("tz-select");
+  const el = document.getElementById("chart-time-of-day");
+  if (!el || !select) return;
+  const inst = echarts.init(el, "dark");
+  const apply = () => {
+    const offset = parseFloat(select.value);
+    inst.setOption(buildTimeOfDayChartOption(tod.hourCountsUtc, offset));
+  };
+  apply();
+  select.addEventListener("change", apply);
+}
+
 renderHero(__DATA__.hero);
 renderStrip(__DATA__.topStrip);
+renderMultiClauding(__DATA__);
+renderLlmNarrative(__DATA__);
 renderInsights(__DATA__.insights);
 renderRecommendations(__DATA__.recommendations);
 renderTopTurns(__DATA__.topTurns);
+renderToolErrors(__DATA__);
+renderLanguages(__DATA__);
 setSummaries(__DATA__);
 
 // ECharts init — note that charts inside <details> still render eagerly because
@@ -528,10 +723,13 @@ const charts = {
   "chart-tokens": __DATA__.tokensPerTurn,
   "chart-cost": __DATA__.costAndCache,
 };
+if (__DATA__.toolErrorsChart) charts["chart-tool-errors"] = __DATA__.toolErrorsChart;
+if (__DATA__.languagesChart) charts["chart-languages"] = __DATA__.languagesChart;
 for (const [id, opt] of Object.entries(charts)) {
   const el = document.getElementById(id);
   if (el && opt) echarts.init(el, "dark").setOption(opt);
 }
+renderTimeOfDay(__DATA__);
 
 // Resize charts when their <details> toggles open (containers were 0×0 before).
 document.querySelectorAll("details.card").forEach((d) => {

@@ -2,8 +2,65 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="google-site-verification" content="rzl8vlm9Cb1VJUlW6ggi0i9teMIBIQJY3hI-4QBGlVg" />  
-<title>cc-debrief</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="google-site-verification" content="rzl8vlm9Cb1VJUlW6ggi0i9teMIBIQJY3hI-4QBGlVg" />
+
+<title>cc-debrief — post-session debrief for Claude Code transcripts</title>
+<meta name="description" content="Open-source, 100% local Claude Code session debrief. See where every token went — repeated reads, idle gaps, model overuse, hidden subagent cost — and get a personalised checklist of fixes for next session. No LLM, no API key, no upload." />
+<meta name="keywords" content="claude code, anthropic, claude code insights, token cost, prompt cache, observability, jsonl, transcript, claude code optimization, /insights, ccusage" />
+<meta name="author" content="Michael Sourbron" />
+<meta name="robots" content="index,follow" />
+<meta name="theme-color" content="#0d1117" />
+<link rel="canonical" href="https://michaelsourbron.github.io/cc-debrief/" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230d1117'/%3E%3Ccircle cx='16' cy='16' r='6' fill='url(%23g)'/%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2358a6ff'/%3E%3Cstop offset='1' stop-color='%233fb950'/%3E%3C/linearGradient%3E%3C/defs%3E%3C/svg%3E" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="cc-debrief" />
+<meta property="og:title" content="cc-debrief — post-session debrief for Claude Code transcripts" />
+<meta property="og:description" content="See where every token went in your Claude Code sessions — repeated reads, idle gaps, model overuse, hidden subagent cost — with a copy-paste checklist of fixes. Runs 100% locally, no LLM, no upload." />
+<meta property="og:url" content="https://michaelsourbron.github.io/cc-debrief/" />
+<meta property="og:image" content="https://michaelsourbron.github.io/cc-debrief/screenshots/report-full.png" />
+<meta property="og:image:alt" content="cc-debrief HTML report — hero stats, insights, recommendations, repeated-call charts, idle-gap histogram." />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="cc-debrief — post-session debrief for Claude Code" />
+<meta name="twitter:description" content="See where every token went in your Claude Code sessions — repeated reads, idle gaps, model overuse, hidden subagent cost — with a copy-paste checklist of fixes." />
+<meta name="twitter:image" content="https://michaelsourbron.github.io/cc-debrief/screenshots/report-full.png" />
+
+<!-- JSON-LD: WebApplication schema for rich results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "cc-debrief",
+  "description": "Open-source, 100% local debrief tool for Claude Code session transcripts. Generates an HTML report with per-source token attribution, repeated-call detection, idle-gap analysis, and a personalised checklist of fixes.",
+  "url": "https://michaelsourbron.github.io/cc-debrief/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Any",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/licenses/MIT",
+  "creator": {
+    "@type": "Person",
+    "name": "Michael Sourbron",
+    "url": "https://github.com/MichaelSourbron"
+  },
+  "codeRepository": "https://github.com/MichaelSourbron/cc-debrief",
+  "softwareVersion": "0.1.0",
+  "softwareRequirements": "A modern browser (Chrome, Edge, Firefox, Safari) for the web version; Node.js 20+ for the CLI.",
+  "featureList": [
+    "Per-source token attribution (CLAUDE.md, skills, history, this turn, system prompt)",
+    "Repeated-read and repeated-Bash-call detection",
+    "Idle-gap analysis with prompt-cache TTL impact",
+    "Hidden subagent cost surfacing",
+    "Personalised next-session checklist with copy-paste fixes",
+    "100% local — no LLM calls, no API key, no upload",
+    "Cross-session combined reports"
+  ]
+}
+</script>
+
 <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root {
@@ -36,14 +93,23 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 56px 24px 24px;
+    padding: 48px 24px 24px;
   }
   body.has-data .drop { display: none; }
   .drop-inner { width: 100%; max-width: 640px; display: flex; flex-direction: column; align-items: center; }
+  .drop-wide { width: 100%; max-width: 1040px; margin: 0 auto; }
   .drop .brand-mark {
-    display: inline-flex; align-items: center; gap: 10px;
-    color: var(--fg); font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
-    margin-bottom: 8px;
+    display: inline-flex; align-items: center; gap: 12px;
+    color: var(--fg); font-size: 32px; font-weight: 700; letter-spacing: -0.025em;
+    margin-bottom: 12px;
+  }
+  .drop .tagline {
+    color: var(--fg); font-size: 18px; font-weight: 600; line-height: 1.35;
+    text-align: center; margin: 0 0 8px; letter-spacing: -0.01em;
+  }
+  .drop .tagline .accent {
+    background: linear-gradient(120deg, #58a6ff, #d2a8ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .drop .brand-mark .dot {
     width: 12px; height: 12px; border-radius: 50%;
@@ -163,6 +229,101 @@
     background: rgba(248, 81, 73, 0.07);
     border: 1px solid rgba(248, 81, 73, 0.3);
     border-radius: 8px;
+  }
+
+  /* Trust badges row */
+  .badges {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+    margin: 18px 0 4px; width: 100%;
+  }
+  .badges .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: rgba(22, 27, 34, 0.6); color: var(--muted);
+    font-size: 11.5px; letter-spacing: 0.02em;
+  }
+  .badges .pill .glyph {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--good);
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.5);
+  }
+  .badges .pill.muted .glyph { background: var(--muted); box-shadow: none; }
+
+  /* Sample preview block */
+  .sample {
+    width: 100%; max-width: 1040px; margin: 56px auto 0;
+    text-align: center;
+  }
+  .sample-eyebrow {
+    color: var(--accent); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;
+  }
+  .sample-heading {
+    font-size: 22px; font-weight: 700; letter-spacing: -0.015em;
+    color: var(--fg); margin: 0 0 8px;
+  }
+  .sample-sub {
+    color: var(--muted); font-size: 14px; max-width: 640px;
+    margin: 0 auto 24px; line-height: 1.55;
+  }
+  .sample-frame {
+    border: 1px solid var(--border); border-radius: 12px;
+    background: #161b22; padding: 8px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+  }
+  .sample-frame img {
+    width: 100%; height: auto; display: block;
+    border-radius: 8px;
+  }
+  .sample-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin-top: 16px;
+  }
+  .sample-grid .thumb {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: #161b22; padding: 6px;
+    transition: border-color 0.15s, transform 0.15s;
+  }
+  .sample-grid .thumb:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .sample-grid .thumb img { width: 100%; height: auto; display: block; border-radius: 4px; }
+  .sample-grid .thumb-label {
+    color: var(--muted); font-size: 11px; padding: 6px 4px 2px; text-align: center;
+  }
+
+  /* vs /insights teaser */
+  .versus {
+    width: 100%; max-width: 880px; margin: 56px auto 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px 24px 20px;
+  }
+  .versus h3 {
+    font-size: 18px; font-weight: 700; letter-spacing: -0.01em;
+    color: var(--fg); margin: 0 0 6px;
+  }
+  .versus .versus-sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; line-height: 1.55; }
+  .versus-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .versus-col {
+    border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+    background: rgba(13, 17, 23, 0.4);
+  }
+  .versus-col h4 {
+    margin: 0 0 4px; font-size: 14px; color: var(--fg); display: flex;
+    align-items: center; gap: 8px;
+  }
+  .versus-col h4 .tag {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 10px;
+  }
+  .versus-col.ours h4 .tag { background: var(--accent); color: #0d1117; }
+  .versus-col.theirs h4 .tag { background: rgba(210, 168, 255, 0.18); color: #d2a8ff; border: 1px solid rgba(210, 168, 255, 0.4); }
+  .versus-col p { color: var(--muted); font-size: 12.5px; line-height: 1.6; margin: 6px 0 0; }
+  .versus-col ul { margin: 8px 0 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.65; }
+  .versus-col li { margin-bottom: 2px; }
+  .versus-col code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; color: var(--accent); }
+
+  @media (max-width: 720px) {
+    .sample-grid { grid-template-columns: repeat(2, 1fr); }
+    .versus-cols { grid-template-columns: 1fr; }
   }
 
   .drop-footer {
@@ -380,9 +541,11 @@
 <section class="drop" id="drop-screen">
   <div class="drop-inner">
     <div class="brand-mark"><span class="dot"></span>cc-debrief</div>
+    <h1 class="tagline">
+      Post-session debrief for <span class="accent">Claude Code</span> transcripts.
+    </h1>
     <p class="lede">
-      <strong>Post-session debrief for Claude Code transcripts.</strong>
-      See where every token went — repeated reads, idle gaps, model overuse, hidden subagent cost — and get a personalised checklist of fixes for next session.
+      See where every token went — repeated reads, idle gaps, model overuse, hidden subagent cost — and get a personalised checklist of fixes for next session. <strong>100% local. No LLM. No upload.</strong>
     </p>
 
     <div class="drop-area" id="drop-area">
@@ -390,6 +553,14 @@
       <button class="pick" type="button" id="folder-btn">Choose folder</button>
       <input type="file" id="folder-input" webkitdirectory directory multiple />
       <input type="file" id="file-input" accept=".jsonl,application/json" hidden />
+    </div>
+
+    <div class="badges">
+      <span class="pill"><span class="glyph"></span>100% local</span>
+      <span class="pill"><span class="glyph"></span>No LLM calls</span>
+      <span class="pill"><span class="glyph"></span>No API key</span>
+      <span class="pill muted"><span class="glyph"></span>MIT licensed</span>
+      <span class="pill muted"><span class="glyph"></span>~100&thinsp;ms per session</span>
     </div>
 
     <ul class="hint-list">
@@ -427,7 +598,79 @@
     </div>
 
     <div class="err" id="drop-err" hidden></div>
+  </div>
 
+  <section class="sample" aria-label="Sample report preview">
+    <div class="sample-eyebrow">What you'll see</div>
+    <h2 class="sample-heading">A real session, debriefed in ~100&thinsp;ms</h2>
+    <p class="sample-sub">
+      One HTML page. Hero stats, auto-generated insights, a personalised <em>"things to try next session"</em> checklist with copy-paste fixes, and twelve drill-down panels — all rendered locally in your browser.
+    </p>
+    <div class="sample-frame">
+      <img
+        src="screenshots/report-full.png"
+        alt="cc-debrief HTML report — hero, insights, recommendations, repeated-call charts, idle-gap histogram"
+        loading="lazy" />
+    </div>
+
+    <div class="sample-grid" aria-label="Report panels">
+      <div class="thumb">
+        <img src="screenshots/01-hero.png" alt="Hero panel — total cost, biggest opportunity, session shape" loading="lazy" />
+        <div class="thumb-label">Hero — total cost &amp; biggest opportunity</div>
+      </div>
+      <div class="thumb">
+        <img src="screenshots/03-insights.png" alt="Insights panel — auto-generated findings with action items" loading="lazy" />
+        <div class="thumb-label">Insights — findings + actions</div>
+      </div>
+      <div class="thumb">
+        <img src="screenshots/04-recs.png" alt="Next session — things to try checklist with copy-paste snippets" loading="lazy" />
+        <div class="thumb-label">Next session — copy-paste fixes</div>
+      </div>
+      <div class="thumb">
+        <img src="screenshots/06-treemap.png" alt="Focus turn token attribution treemap" loading="lazy" />
+        <div class="thumb-label">Focus turn — attribution treemap</div>
+      </div>
+      <div class="thumb">
+        <img src="screenshots/07-waste.png" alt="Token waste from repeated calls — files and bash commands" loading="lazy" />
+        <div class="thumb-label">Token waste — repeated calls</div>
+      </div>
+      <div class="thumb">
+        <img src="screenshots/09-idle.png" alt="Time between turns histogram — idle gaps that expired the prompt cache" loading="lazy" />
+        <div class="thumb-label">Idle gaps — cache expiry</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="versus" aria-label="cc-debrief versus /insights">
+    <h3>How does this compare to Claude Code's built-in <code>/insights</code>?</h3>
+    <p class="versus-sub">
+      In April 2026 Anthropic shipped a built-in <code>/insights</code> command that also generates an HTML session report. The two tools are <strong>complementary, not redundant</strong> — different shape, different cost model, different use cases.
+    </p>
+    <div class="versus-cols">
+      <div class="versus-col theirs">
+        <h4><span class="tag">/insights</span> qualitative</h4>
+        <ul>
+          <li>Haiku LLM reads your sessions</li>
+          <li>Sentiment, frustration patterns, themes</li>
+          <li>Sends sessions through the API</li>
+          <li>Costs subscription tokens</li>
+          <li>Last 30 days of sessions</li>
+        </ul>
+      </div>
+      <div class="versus-col ours">
+        <h4><span class="tag">cc-debrief</span> quantitative</h4>
+        <ul>
+          <li>Pure deterministic, ~100&thinsp;ms per session</li>
+          <li>Cache TTL, subagent split, repeated calls, idle gaps</li>
+          <li>100% local — no network, no API</li>
+          <li>Zero token cost</li>
+          <li>One session OR cross-session combined</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="drop-inner">
     <footer class="drop-footer">
       Built for Anthropic's <a href="https://www.anthropic.com/claude-code" target="_blank" rel="noopener">Claude Code</a>
       <span class="sep">·</span>
@@ -448,13 +691,17 @@
   <nav id="toc-nav">
     <a href="#hero">Overview</a>
     <a href="#stats">Stats</a>
+    <a href="#multi-clauding" id="toc-multi-clauding" hidden>Sessions</a>
     <a href="#insights">Insights</a>
     <a href="#recs">Next session</a>
     <a href="#top-turns">Top turns</a>
     <a href="#treemap">Focus turn</a>
     <a href="#waste">Token waste</a>
+    <a href="#languages" id="toc-languages" hidden>Languages</a>
     <a href="#tools">Tools</a>
+    <a href="#tool-errors" id="toc-tool-errors" hidden>Tool errors</a>
     <a href="#idle">Idle gaps</a>
+    <a href="#time-of-day">Time of day</a>
     <a href="#attribution">Attribution</a>
     <a href="#tokens">Per-turn tokens</a>
     <a href="#cost">Cost vs cache</a>
@@ -485,6 +732,18 @@
 </section>
 
 <section id="stats" class="strip"></section>
+
+<details class="card" id="multi-clauding" hidden>
+  <summary><span class="chev">▸</span><span class="card-title">Parallel sessions detected</span><span class="card-summary" id="multi-clauding-summary"></span></summary>
+  <div class="card-body">
+    <div class="strip" id="multi-clauding-stats" style="margin-bottom:12px"></div>
+    <div class="rec-pattern" style="font-size:12.5px; color:var(--muted)">
+      Multi-clauding is detected when sessions overlap in time, suggesting parallel workflows
+      (e.g. you opened a second Claude Code window while the first was still running).
+      Long overlap shares can mean unintended duplicate work.
+    </div>
+  </div>
+</details>
 
 <details class="card insights" id="insights" open>
   <summary><span class="chev">▸</span><span class="card-title">Insights</span><span class="card-summary" id="insights-summary"></span></summary>
@@ -528,14 +787,41 @@
   </div>
 </details>
 
+<details class="card" id="languages" hidden>
+  <summary><span class="chev">▸</span><span class="card-title">Languages touched</span><span class="card-summary" id="languages-summary"></span></summary>
+  <div class="card-body"><div class="chart" id="chart-languages"></div></div>
+</details>
+
 <details class="card" id="tools">
   <summary><span class="chev">▸</span><span class="card-title">Tool result tokens by tool</span><span class="card-summary" id="tools-summary"></span></summary>
   <div class="card-body"><div class="chart" id="chart-tools"></div></div>
 </details>
 
+<details class="card" id="tool-errors" hidden>
+  <summary><span class="chev">▸</span><span class="card-title">Tool errors encountered</span><span class="card-summary" id="tool-errors-summary"></span></summary>
+  <div class="card-body"><div class="chart" id="chart-tool-errors"></div></div>
+</details>
+
 <details class="card" id="idle">
   <summary><span class="chev">▸</span><span class="card-title">Time between turns</span><span class="card-summary" id="idle-summary"></span></summary>
   <div class="card-body"><div class="chart" id="chart-idle"></div></div>
+</details>
+
+<details class="card" id="time-of-day">
+  <summary><span class="chev">▸</span><span class="card-title">User messages by time of day</span><span class="card-summary" id="time-of-day-summary"></span></summary>
+  <div class="card-body">
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; font-size:12px; color:var(--muted)">
+      <span>Timezone:</span>
+      <select id="tz-select" style="background:#1c2128; border:1px solid var(--border); color:var(--fg); padding:4px 8px; border-radius:4px; font-size:12px">
+        <option value="-8">PT (UTC-8)</option>
+        <option value="-5">ET (UTC-5)</option>
+        <option value="0">UTC (UTC+0)</option>
+        <option value="1" selected>CET (UTC+1)</option>
+        <option value="9">JST (UTC+9)</option>
+      </select>
+    </div>
+    <div class="chart" id="chart-time-of-day"></div>
+  </div>
 </details>
 
 <details class="card" id="attribution">

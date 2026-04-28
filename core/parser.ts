@@ -787,6 +787,302 @@ export function findSessionCwd(records: unknown[]): string | undefined {
   return undefined;
 }
 
+// -- Tool error categorization --------------------------------------------
+// Walks tool_result blocks where `is_error: true` and buckets them by the
+// shape of the error text. Pure regex/text matching — no LLM in the loop.
+
+export type ToolErrorCategory =
+  | "command_failed"
+  | "file_too_large"
+  | "file_not_found"
+  | "file_changed"
+  | "user_rejected"
+  | "other";
+
+export type ToolErrorStat = { category: ToolErrorCategory; label: string; count: number };
+
+export type ToolErrorStats = {
+  total: number;
+  byCategory: ToolErrorStat[];
+};
+
+const TOOL_ERROR_LABELS: Record<ToolErrorCategory, string> = {
+  command_failed: "Command Failed",
+  file_too_large: "File Too Large",
+  file_not_found: "File Not Found",
+  file_changed: "File Changed",
+  user_rejected: "User Rejected",
+  other: "Other",
+};
+
+function classifyToolError(text: string): ToolErrorCategory {
+  const t = text.toLowerCase();
+  if (t.includes("exceeds maximum") || t.includes("file content (") || t.includes("too large")) {
+    return "file_too_large";
+  }
+  if (t.includes("has been modified") || t.includes("has not been read") || t.includes("file changed")) {
+    return "file_changed";
+  }
+  if (
+    t.includes("does not exist") ||
+    t.includes("no such file") ||
+    t.includes("file not found") ||
+    t.includes("enoent")
+  ) {
+    return "file_not_found";
+  }
+  if (
+    t.includes("user rejected") ||
+    t.includes("user did not") ||
+    t.includes("user denied") ||
+    t.includes("interrupted by user")
+  ) {
+    return "user_rejected";
+  }
+  if (/\bexit code\b/.test(t) || t.includes("command failed")) {
+    return "command_failed";
+  }
+  return "other";
+}
+
+export function analyzeToolErrors(records: unknown[]): ToolErrorStats {
+  const counts = new Map<ToolErrorCategory, number>();
+  for (const r of records) {
+    const o = asRecord(r);
+    if (!o) continue;
+    const m = asRecord(o.message);
+    if (!m) continue;
+    const content = m.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      const block = asRecord(b);
+      if (!block || block.type !== "tool_result" || block.is_error !== true) continue;
+      let text = "";
+      if (typeof block.content === "string") text = block.content;
+      else if (Array.isArray(block.content)) {
+        for (const sub of block.content) {
+          const s = asRecord(sub);
+          if (s && s.type === "text" && typeof s.text === "string") text += s.text;
+        }
+      }
+      const cat = classifyToolError(text);
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+  }
+  const byCategory: ToolErrorStat[] = [...counts.entries()]
+    .map(([category, count]) => ({ category, label: TOOL_ERROR_LABELS[category], count }))
+    .sort((a, b) => b.count - a.count);
+  const total = byCategory.reduce((s, c) => s + c.count, 0);
+  return { total, byCategory };
+}
+
+// -- Languages touched ----------------------------------------------------
+// Maps file_path arguments on Read/Edit/Write/NotebookEdit calls to a
+// human-readable language label, then counts call frequency and distinct
+// files per language.
+
+export type LanguageStat = { language: string; calls: number; files: number };
+
+const EXT_TO_LANG: Record<string, string> = {
+  ts: "TypeScript", tsx: "TypeScript",
+  js: "JavaScript", jsx: "JavaScript", mjs: "JavaScript", cjs: "JavaScript",
+  py: "Python", pyi: "Python", ipynb: "Jupyter",
+  go: "Go", rs: "Rust", java: "Java", kt: "Kotlin",
+  c: "C", h: "C", cc: "C++", cpp: "C++", cxx: "C++", hpp: "C++",
+  cs: "C#", php: "PHP", rb: "Ruby", swift: "Swift", scala: "Scala",
+  sh: "Shell", bash: "Shell", zsh: "Shell", fish: "Shell",
+  ps1: "PowerShell",
+  sql: "SQL",
+  html: "HTML", htm: "HTML",
+  css: "CSS", scss: "SCSS", sass: "SCSS", less: "Less",
+  json: "JSON", yaml: "YAML", yml: "YAML", toml: "TOML",
+  xml: "XML", svg: "SVG",
+  md: "Markdown", mdx: "Markdown", rst: "reStructuredText",
+  tf: "Terraform", hcl: "HCL",
+  vue: "Vue", svelte: "Svelte",
+  conf: "Config", ini: "Config", env: "Config",
+  txt: "Text",
+};
+
+export function analyzeLanguages(records: unknown[]): LanguageStat[] {
+  const callsByLang = new Map<string, number>();
+  const filesByLang = new Map<string, Set<string>>();
+  for (const r of records) {
+    const o = asRecord(r);
+    if (!o) continue;
+    const m = asRecord(o.message);
+    if (!m) continue;
+    const content = m.content;
+    if (!Array.isArray(content)) continue;
+    for (const b of content) {
+      const block = asRecord(b);
+      if (!block || block.type !== "tool_use") continue;
+      const name = typeof block.name === "string" ? block.name : "";
+      if (!FILE_TOOLS.has(name)) continue;
+      const input = asRecord(block.input);
+      const path = typeof input?.file_path === "string" ? input.file_path : "";
+      if (!path) continue;
+      const base = path.toLowerCase().split(/[\\/]/).pop() ?? "";
+      let lang = "Other";
+      if (/^dockerfile/.test(base)) {
+        lang = "Dockerfile";
+      } else {
+        const dot = base.lastIndexOf(".");
+        if (dot > 0) {
+          const ext = base.slice(dot + 1);
+          lang = EXT_TO_LANG[ext] ?? "Other";
+        }
+      }
+      callsByLang.set(lang, (callsByLang.get(lang) ?? 0) + 1);
+      const fs = filesByLang.get(lang) ?? new Set<string>();
+      fs.add(path);
+      filesByLang.set(lang, fs);
+    }
+  }
+  return [...callsByLang.entries()]
+    .map(([language, calls]) => ({
+      language,
+      calls,
+      files: filesByLang.get(language)?.size ?? 0,
+    }))
+    .sort((a, b) => b.calls - a.calls);
+}
+
+// -- Time of day ----------------------------------------------------------
+// Bucket user-message timestamps into 24 UTC hours. The browser rotates the
+// array by the user's selected timezone offset at render time, so the
+// underlying data stays timezone-neutral.
+
+export type TimeOfDay = {
+  hourCountsUtc: number[]; // length 24
+  totalUserMessages: number;
+};
+
+export function analyzeTimeOfDay(records: unknown[]): TimeOfDay {
+  const counts = new Array<number>(24).fill(0);
+  let total = 0;
+  for (const r of records) {
+    const o = asRecord(r);
+    if (!o || o.type !== "user") continue;
+    const promptText = extractUserPromptText(r);
+    if (!promptText) continue;
+    const ts = typeof o.timestamp === "string" ? o.timestamp : "";
+    if (!ts) continue;
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) continue;
+    const h = d.getUTCHours();
+    counts[h] += 1;
+    total += 1;
+  }
+  return { hourCountsUtc: counts, totalUserMessages: total };
+}
+
+// -- Multi-clauding -------------------------------------------------------
+// Detects time-overlapping sessions when multiple JSONLs have been combined
+// into a single records array. Records must carry a `__sessionId` marker
+// (added by the combined-session loader); without those, returns null.
+
+export type MultiClaudingStats = {
+  sessionCount: number;
+  overlapEvents: number;
+  sessionsInvolved: number;
+  messagesInOverlap: number;
+  totalMessages: number;
+  overlapPct: number;
+};
+
+export function analyzeMultiClauding(records: unknown[]): MultiClaudingStats | null {
+  type Range = { startMs: number; endMs: number; messages: number };
+  const ranges = new Map<string, Range>();
+  let totalMessages = 0;
+  for (const r of records) {
+    const o = asRecord(r);
+    if (!o) continue;
+    const tagged = o as Record<string, unknown>;
+    const sid = typeof tagged.__sessionId === "string" ? (tagged.__sessionId as string) : null;
+    if (!sid) continue;
+    const ts = typeof o.timestamp === "string" ? o.timestamp : "";
+    if (!ts) continue;
+    const ms = new Date(ts).getTime();
+    if (Number.isNaN(ms)) continue;
+    totalMessages += 1;
+    const cur = ranges.get(sid);
+    if (!cur) {
+      ranges.set(sid, { startMs: ms, endMs: ms, messages: 1 });
+    } else {
+      if (ms < cur.startMs) cur.startMs = ms;
+      if (ms > cur.endMs) cur.endMs = ms;
+      cur.messages += 1;
+    }
+  }
+  if (ranges.size < 2) return null;
+
+  // Sweep-line: find time intervals where 2+ sessions are simultaneously active.
+  type Ev = { ms: number; kind: "start" | "end"; id: string };
+  const events: Ev[] = [];
+  for (const [sid, v] of ranges) {
+    events.push({ ms: v.startMs, kind: "start", id: sid });
+    events.push({ ms: v.endMs, kind: "end", id: sid });
+  }
+  events.sort((a, b) => a.ms - b.ms || (a.kind === "end" ? -1 : 1));
+
+  type Interval = { start: number; end: number };
+  const intervals: Interval[] = [];
+  const involved = new Set<string>();
+  const open = new Set<string>();
+  let intervalStart: number | null = null;
+  let overlapEvents = 0;
+  for (const ev of events) {
+    if (ev.kind === "start") {
+      open.add(ev.id);
+      if (open.size === 2) {
+        intervalStart = ev.ms;
+        overlapEvents += 1;
+        for (const id of open) involved.add(id);
+      } else if (open.size > 2) {
+        involved.add(ev.id);
+      }
+    } else {
+      if (open.size === 2 && intervalStart != null) {
+        intervals.push({ start: intervalStart, end: ev.ms });
+        intervalStart = null;
+      }
+      open.delete(ev.id);
+    }
+  }
+
+  let messagesInOverlap = 0;
+  if (intervals.length > 0) {
+    intervals.sort((a, b) => a.start - b.start);
+    for (const r of records) {
+      const o = asRecord(r);
+      if (!o) continue;
+      const tagged = o as Record<string, unknown>;
+      if (typeof tagged.__sessionId !== "string") continue;
+      const ts = typeof o.timestamp === "string" ? o.timestamp : "";
+      if (!ts) continue;
+      const ms = new Date(ts).getTime();
+      if (Number.isNaN(ms)) continue;
+      for (const iv of intervals) {
+        if (ms < iv.start) break;
+        if (ms <= iv.end) {
+          messagesInOverlap += 1;
+          break;
+        }
+      }
+    }
+  }
+
+  return {
+    sessionCount: ranges.size,
+    overlapEvents,
+    sessionsInvolved: involved.size,
+    messagesInOverlap,
+    totalMessages,
+    overlapPct: totalMessages > 0 ? (messagesInOverlap / totalMessages) * 100 : 0,
+  };
+}
+
 function attribute(
   total: number,
   config: IndexedSources,

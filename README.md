@@ -275,6 +275,36 @@ Token counts use a `chars / 3.5` BPE estimate for speed; the API-reported `input
 - No internet connection used.
 - Your transcripts and the generated `report.html` stay on your machine.
 
+> **Heads-up — opt-in hybrid mode (v0.2):** there's an optional `--with-ollama` flag described below that runs a *local* LLM (via [Ollama](https://ollama.com)) for narrative-style features like a workflow summary. **It's off by default**, requires you to install Ollama yourself, and never sends data over the network. Default `cc-debrief` stays exactly as described above.
+
+---
+
+## Optional: hybrid mode with local LLM (`--with-ollama`)
+
+`/insights` (Claude Code's built-in command) excels at qualitative reads — workflow narrative, friction analysis, brief summaries — that need an LLM to read prompts. cc-debrief skips those by default to keep the privacy story clean. If you want them anyway *without* sending sessions to an external API, you can opt in to local LLM mode:
+
+```bash
+# 1. Install Ollama (one-time): https://ollama.com
+# 2. Pull a small model:
+ollama pull llama3.1:8b
+
+# 3. Run cc-debrief with the flag:
+cc-debrief session.jsonl --with-ollama
+
+# Or pick a different model:
+cc-debrief session.jsonl --with-ollama qwen2.5:7b
+
+# Custom Ollama host (default: http://localhost:11434):
+OLLAMA_HOST=http://192.168.1.10:11434 cc-debrief session.jsonl --with-ollama
+```
+
+**What you get when enabled:** a *Workflow narrative* card describing how you worked in this session, in plain prose, in roughly the same shape as `/insights`' narrative paragraph. (Friction analysis, project-area clustering, brief summary, and outcome rating are stubbed in v0.2 — coming in a future release.)
+
+**Privacy stays intact:**
+- Ollama runs locally, on your machine, no API key, no upload.
+- If Ollama isn't reachable, cc-debrief logs a warning and falls back to the deterministic-only report.
+- Default behaviour (without the flag) is unchanged — 100% local, no LLM, ~100 ms per session.
+
 The web version has the same privacy guarantee — `FileReader` + `showDirectoryPicker` keep everything client-side. Nothing is uploaded to any server.
 
 ---

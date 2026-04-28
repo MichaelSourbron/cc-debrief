@@ -13,18 +13,77 @@ import type {
   ModelRecommendation,
   SubagentStats,
   IndexedSources,
+  ToolErrorStats,
+  ToolErrorStat,
+  LanguageStat,
+  TimeOfDay,
+  MultiClaudingStats,
 } from "./parser.js";
+import type { LlmInsights } from "./llm-analysis.js";
 
 export type EChartsOption = Record<string, unknown>;
 
+// -- Shared chart styling -------------------------------------------------
+// One palette, one tooltip skin, one gradient helper — pinned here so every
+// chart inherits the same visual language instead of inventing its own.
+
+const PALETTE = {
+  primary: "#58a6ff",
+  primaryDark: "#1f6feb",
+  accent: "#d2a8ff",
+  accentDark: "#a371f7",
+  good: "#56d364",
+  goodDark: "#2ea043",
+  warn: "#e3b341",
+  warnDark: "#9e6a03",
+  bad: "#ff7b72",
+  badDark: "#da3633",
+  text: "#e6edf3",
+  muted: "#8b949e",
+  border: "#30363d",
+};
+
+// Linear gradient for bar fills. Horizontal bars get a left→right gradient
+// (saturated at the start, soft at the tail); vertical bars get top→bottom.
+function gradientFill(from: string, to: string, horizontal = false): unknown {
+  return {
+    type: "linear",
+    x: 0,
+    y: 0,
+    x2: horizontal ? 1 : 0,
+    y2: horizontal ? 0 : 1,
+    colorStops: [
+      { offset: 0, color: from },
+      { offset: 1, color: to },
+    ],
+    global: false,
+  };
+}
+
+// Tooltip skin. Rounded, soft shadow, dim translucent panel.
+const TOOLTIP_SKIN = {
+  backgroundColor: "rgba(13, 17, 23, 0.94)",
+  borderColor: PALETTE.border,
+  borderWidth: 1,
+  padding: [10, 12, 10, 12] as [number, number, number, number],
+  textStyle: { color: PALETTE.text, fontSize: 12 },
+  extraCssText:
+    "border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.45); backdrop-filter: blur(4px);",
+};
+
+// Small colored dot for tooltip leaders — matches whatever color the bar uses.
+function tooltipDot(color: string): string {
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};margin-right:8px;vertical-align:1px"></span>`;
+}
+
 const KIND_COLORS: Record<SourceKind, string> = {
   "static-system": "#6e7681",
-  "claude-md-user": "#bc8cff",
-  "claude-md-project": "#a371f7",
-  "skill-listing": "#79c0ff",
-  history: "#3fb950",
-  "this-turn-user": "#f85149",
-  "this-turn-tool-result": "#d29922",
+  "claude-md-user": PALETTE.accent,
+  "claude-md-project": PALETTE.accentDark,
+  "skill-listing": PALETTE.primary,
+  history: PALETTE.good,
+  "this-turn-user": PALETTE.bad,
+  "this-turn-tool-result": PALETTE.warn,
 };
 
 const KIND_ORDER: SourceKind[] = [
@@ -87,6 +146,15 @@ export type ReportData = {
   bucketSize: number;
   focusTurnInfo: { index: number; costUsd: number; total: number };
   modelTimeline: { index: number; model: string; timestamp: string }[];
+  toolErrorsChart: EChartsOption | null;
+  toolErrors: ToolErrorStats;
+  languagesChart: EChartsOption | null;
+  languages: LanguageStat[];
+  timeOfDay: TimeOfDay;
+  multiClauding: MultiClaudingStats | null;
+  /** Opt-in: LLM-derived narrative + friction/clusters/summary/outcome.
+   *  Null when --with-ollama wasn't passed (default behaviour). */
+  llmInsights: LlmInsights | null;
 };
 
 export type Insight = {
@@ -517,6 +585,279 @@ function generateRecommendations(
     });
   }
 
+  // 12. Cap MAX_THINKING_TOKENS when extended thinking dominates output.
+  const totalThinking = turns.reduce((s, t) => s + t.thinkingOutputTokens, 0);
+  const totalOutputAll = turns.reduce((s, t) => s + t.usage.outputTokens, 0);
+  if (totalOutputAll > 0 && totalThinking / totalOutputAll > 0.5 && totalThinking > 5000) {
+    const thinkPct = (totalThinking / totalOutputAll) * 100;
+    const tokensWasted = Math.round(totalThinking * 0.7);
+    recs.push({
+      title: "Cap MAX_THINKING_TOKENS for routine work",
+      pattern: `~${totalThinking.toLocaleString("en-US")} thinking tokens (${thinkPct.toFixed(0)}% of total output) — extended thinking dominated this session.`,
+      why: "Default thinking budget is 31,999 tokens (max 63,999). For sessions whose tasks don't benefit from deep reasoning, lower it. Thinking blocks are billed at the output rate AND accumulate in history at cache-read rate on every subsequent turn.",
+      snippet: `# Lower the budget for routine work:\nexport MAX_THINKING_TOKENS=10000\n\n# Or disable extended thinking entirely:\nexport MAX_THINKING_TOKENS=0\n\n# On Opus/Sonnet 4.6, also pin the legacy fixed-budget behaviour\n# (skip if you want the new adaptive thinking):\nexport CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING=1`,
+      snippetLang: "sh",
+      estimatedImpact: `~${tokensWasted.toLocaleString("en-US")} tokens shaved per session of similar shape.`,
+    });
+  }
+
+  // 13. .claudeignore for noise directories that show up in hot files.
+  const NOISY_RX =
+    /(node_modules|[\\/]dist[\\/]|[\\/]build[\\/]|\.next|__fixtures__|__mocks__|coverage|\.cache)/i;
+  const noisyHits = repeated.byFile.filter((f) => NOISY_RX.test(f.target));
+  if (noisyHits.length > 0) {
+    const samples = noisyHits
+      .slice(0, 4)
+      .map((f) => f.target.split(/[\\/]/).slice(-3).join("/"));
+    const wasted = noisyHits.reduce(
+      (s, f) => s + Math.round((f.totalTokens * (f.calls - 1)) / f.calls),
+      0,
+    );
+    const ignoreLines = [
+      "node_modules/",
+      "dist/",
+      "build/",
+      ".next/",
+      "__fixtures__/",
+      "__mocks__/",
+      "coverage/",
+      ".cache/",
+    ].join("\n");
+    recs.push({
+      title: "Add a .claudeignore for build/dependency directories",
+      pattern: `${noisyHits.length} repeated read${noisyHits.length === 1 ? "" : "s"} landed in noise dirs — e.g. ${samples.join(", ")}.`,
+      why: ".claudeignore (same syntax as .gitignore) blocks noise dirs from automatic context loading. Files stay readable on demand — they just don't get pulled in by exploration tools.",
+      snippet: `# <project>/.claudeignore\n${ignoreLines}`,
+      snippetLang: "sh",
+      estimatedImpact: `~${wasted.toLocaleString("en-US")} tokens of noise re-reads avoided per session of similar shape.`,
+    });
+  }
+
+  // 14. PostToolUse trim hook for Bash output (mirror of the Read hook rec).
+  const bashStat = toolStats.find((t) => t.name === "Bash");
+  if (bashStat && bashStat.meanResultTokens > 2000 && bashStat.calls >= 10) {
+    recs.push({
+      title: "Trim large Bash outputs with a hook",
+      pattern: `Bash averaged ${bashStat.meanResultTokens.toLocaleString("en-US")} tokens/call across ${bashStat.calls} calls. Build logs, test output, and tail dumps accumulate in history forever.`,
+      why: "A PostToolUse hook can replace oversized Bash output with a head/tail summary before it enters context — same pattern as the Read trim, on a different matcher.",
+      snippet: `// ~/.claude/settings.json\n{\n  "hooks": {\n    "PostToolUse": [{\n      "matcher": "Bash",\n      "hooks": [{\n        "type": "command",\n        "command": "node trim-large-bash.js"\n      }]\n    }]\n  }\n}`,
+      snippetLang: "json",
+      estimatedImpact: `Cuts ~50% of Bash result tokens on calls over 5KB.`,
+    });
+  }
+
+  // 15. Switch cache writes to the 1h TTL when many long idle gaps exist.
+  const totalCw5m = turns.reduce((s, t) => s + t.usage.cacheCreation5mTokens, 0);
+  const totalCw1h = turns.reduce((s, t) => s + t.usage.cacheCreation1hTokens, 0);
+  const totalCw = totalCw5m + totalCw1h;
+  if (wc.longGapsCount >= 5 && totalCw > 0 && totalCw1h / totalCw < 0.2) {
+    const pct5m = (totalCw5m / totalCw) * 100;
+    recs.push({
+      title: "Use the 1-hour cache TTL for hot prefixes",
+      pattern: `${wc.longGapsCount} idle gaps over 5 min, but ${pct5m.toFixed(0)}% of cache writes used the 5-min tier — every long break re-warmed from scratch.`,
+      why: "1h TTL costs 2× base input on write vs. 1.25× for 5m, but pays off after one or two avoided re-warms. Apply via cache_control on the long-lived prefix (CLAUDE.md, system prompt, hot files).",
+      snippet: `// On the prefix block you want to keep cached longer:\n{\n  "type": "text",\n  "text": "<your CLAUDE.md or hot-file contents>",\n  "cache_control": { "type": "ephemeral", "ttl": "1h" }\n}`,
+      snippetLang: "json",
+      estimatedImpact: `Avoids ${wc.longGapsCount} cache re-warms per session of similar shape.`,
+    });
+  }
+
+  // 16. Vague short prompts that triggered expensive turns.
+  const validTurns = turns.filter(
+    (t) => t.userPromptPreview && t.userPromptPreview !== "(continuation)",
+  );
+  if (validTurns.length >= 5) {
+    const sortedCost = [...validTurns].map((t) => t.costUsd).sort((a, b) => a - b);
+    const median = sortedCost[Math.floor(sortedCost.length / 2)] ?? 0;
+    const vagueTurns = validTurns
+      .filter((t) => t.userPromptPreview.length < 30 && t.costUsd > median * 3 && median > 0)
+      .sort((a, b) => b.costUsd - a.costUsd)
+      .slice(0, 5);
+    if (vagueTurns.length >= 2) {
+      const examples = vagueTurns
+        .map((t) => `# turn #${t.index} ($${t.costUsd.toFixed(2)}): "${t.userPromptPreview}"`)
+        .join("\n");
+      const totalSpent = vagueTurns.reduce((s, t) => s + t.costUsd, 0);
+      recs.push({
+        title: "Replace vague prompts with specific ones",
+        pattern: `${vagueTurns.length} short prompt${vagueTurns.length === 1 ? "" : "s"} (<30 chars) drove turns costing 3×+ the median.`,
+        why: 'Vague prompts ("fix it", "do it", "again") force Claude to re-read context to figure out intent. A 3-part prompt — what · which file · what done looks like — usually answers in one turn.',
+        snippet: `# Instead of "fix it":\n# - What:    fix the off-by-one in pagination\n# - Where:   src/lib/paginate.ts (the slice() call)\n# - Done if: tests in tests/paginate.test.ts pass\n\n# Vague prompts that ran expensive turns this session:\n${examples}`,
+        snippetLang: "sh",
+        estimatedImpact: `~$${totalSpent.toFixed(2)} of expensive vague-prompt turns on this session.`,
+      });
+    }
+  }
+
+  // 17. Subagent-candidate detection — turns that read many files but wrote little.
+  const subagentCandidates = turns
+    .map((t) => {
+      const reads = t.toolsCalled.filter((n) => n === "Read").length;
+      const writes = t.toolsCalled.filter(
+        (n) => n === "Edit" || n === "Write" || n === "NotebookEdit",
+      ).length;
+      return { t, reads, writes };
+    })
+    .filter((x) => x.reads >= 4 && x.writes <= 1)
+    .sort((a, b) => b.reads - a.reads)
+    .slice(0, 5);
+  if (subagentCandidates.length >= 2) {
+    const examples = subagentCandidates
+      .map(
+        (x) =>
+          `# turn #${x.t.index} (${x.reads} Reads, ${x.writes} Edits): "${x.t.userPromptPreview.slice(0, 60)}"`,
+      )
+      .join("\n");
+    recs.push({
+      title: "Delegate research-heavy turns to a subagent",
+      pattern: `${subagentCandidates.length} turn${subagentCandidates.length === 1 ? "" : "s"} read 4+ files but wrote ≤1 — exploration-heavy turns that pollute main context.`,
+      why: "An Agent call runs the exploration in its own context window and returns just the answer. The Reads don't accumulate in your main thread, so subsequent turns don't pay for them at cache-read rate forever.",
+      snippet: `# Instead of letting Claude explore inline, use the Agent tool with\n# subagent_type=Explore for read-only research, or define a custom\n# subagent under .claude/agents/ scoped to read-only tools.\n\n# Exploration-heavy turns this session:\n${examples}`,
+      snippetLang: "sh",
+      estimatedImpact: `Removes per-turn Read accumulation — biggest payoff on long sessions where context grew turn-over-turn.`,
+    });
+  }
+
+  // 19. Reduce output verbosity via a terse CLAUDE.md rule. Output tokens are
+  // billed at 5× input on the way out AND re-billed at cache-read rate on every
+  // subsequent turn, so high mean visible output is a compounding cost.
+  const visibleOutput = totalOutputAll - totalThinking;
+  const meanVisibleOut = turns.length > 0 ? visibleOutput / turns.length : 0;
+  const thinkingShareOfOut = totalOutputAll > 0 ? totalThinking / totalOutputAll : 0;
+  if (meanVisibleOut > 1500 && thinkingShareOfOut < 0.5 && turns.length >= 10) {
+    const trimmable = Math.round(visibleOutput * 0.3);
+    recs.push({
+      title: "Reduce output verbosity with a terse CLAUDE.md rule",
+      pattern: `Mean visible output ~${Math.round(meanVisibleOut).toLocaleString("en-US")} tokens/turn across ${turns.length} turns. Output is billed at 5× input AND re-billed as cache reads on every subsequent turn.`,
+      why: "Most sessions get whatever verbosity Claude defaults to. A short rules block in CLAUDE.md (or a project CLAUDE.md) reliably cuts ~20–30% of output tokens with no loss in usefulness.",
+      snippet: `# CLAUDE.md — drop near the top\n## Response style\n- Be terse. No filler ("certainly", "I'll", "let me…", "great question").\n- Skip recap of what you just did — the diff/output already shows it.\n- No confirmations before acting on a clear request; just do the work.\n- For multi-step plans, list the steps as bullets, not paragraphs.\n- Code over prose: prefer a code block + 1 sentence over 3 paragraphs.`,
+      snippetLang: "md",
+      estimatedImpact: `~${trimmable.toLocaleString("en-US")} output tokens trimmed per session of similar shape (≈30% of visible output).`,
+    });
+  }
+
+  // 20. Bash allowlist for high-frequency safe commands. Cuts approval prompts
+  // (workflow speed, not tokens). Limited to recognized-safe prefixes.
+  const SAFE_BASH_PREFIXES = new Set([
+    "npm", "pnpm", "yarn", "bun",
+    "git", "gh",
+    "tsc", "node", "deno",
+    "cargo", "rustc",
+    "pytest", "ruff", "mypy", "pip", "poetry", "uv",
+    "go",
+    "make",
+    "eslint", "prettier", "biome",
+    "ls", "cat", "pwd",
+  ]);
+  const allowlistCandidates = repeated.byCommand
+    .filter((c) => c.calls >= 10 && SAFE_BASH_PREFIXES.has(c.target))
+    .slice(0, 8);
+  if (allowlistCandidates.length >= 2) {
+    const allowEntries = allowlistCandidates
+      .map((c) => `      "Bash(${c.target}:*)"`)
+      .join(",\n");
+    const examples = allowlistCandidates
+      .map((c) => `${c.target} (${c.calls}×)`)
+      .join(", ");
+    recs.push({
+      title: "Allowlist your high-frequency Bash commands",
+      pattern: `${allowlistCandidates.length} command${allowlistCandidates.length === 1 ? "" : "s"} ran 10+ times this session — ${examples}. Each fresh prefix shape triggers an approval prompt.`,
+      why: "Adding known-safe command prefixes to permissions.allow in .claude/settings.local.json (gitignored, personal) auto-approves them. Saves clicks, keeps you in flow. Dangerous operations (rm, force-push, etc.) stay gated.",
+      snippet: `// .claude/settings.local.json (gitignored)\n{\n  "permissions": {\n    "allow": [\n${allowEntries}\n    ]\n  }\n}`,
+      snippetLang: "json",
+      estimatedImpact: `Removes ${allowlistCandidates.reduce((s, c) => s + c.calls, 0)} approval prompts per session of similar shape.`,
+    });
+  }
+
+  // 21. System-prompt-residual dominance — flags MCP/tool sprawl. The residual
+  // attribution is "everything attributable to the static system prompt + tool
+  // schemas". When it's a large share of every turn, it's tool/MCP definitions.
+  if (turns.length >= 20) {
+    let residualSum = 0;
+    let inputSum = 0;
+    for (const t of turns) {
+      const totalIn =
+        t.usage.inputTokens + t.usage.cacheCreationTokens + t.usage.cacheReadTokens;
+      const residual = t.sources.find((s) => s.kind === "static-system")?.tokens ?? 0;
+      residualSum += residual;
+      inputSum += totalIn;
+    }
+    const residualShare = inputSum > 0 ? residualSum / inputSum : 0;
+    if (residualShare > 0.3) {
+      const meanResidual = Math.round(residualSum / turns.length);
+      recs.push({
+        title: "Audit MCP servers and tool schemas — residual is dominating",
+        pattern: `System prompt + tool schemas account for ${(residualShare * 100).toFixed(0)}% of input tokens (mean ~${meanResidual.toLocaleString("en-US")} tok/turn). That's MCP servers and enabled tools loading their schemas every turn.`,
+        why: "Each enabled MCP server injects its full tool schema — names, descriptions, parameters — into context on every message. A typical multi-server setup adds 15–20K tokens of overhead per turn.",
+        snippet: `# Inside Claude Code, see exactly what's eating context:\n/context\n\n# Then trim:\n# - Disable MCP servers you don't use this project: edit ~/.claude/mcp.json\n# - Or use McPick to toggle servers per-session: https://github.com/...\n# - Or install lean-ctx (https://github.com/yvgude/lean-ctx)\n#   for an MCP+shell-hook combo that sandboxes tool output\n#   (reports 70–99% reduction depending on workflow)`,
+        snippetLang: "sh",
+        estimatedImpact: `~${(residualSum / 2).toLocaleString("en-US")} tokens recoverable if half of the residual is MCP/tool sprawl.`,
+      });
+    }
+  }
+
+  // 18. SessionStart pre-warm / project CLAUDE.md when hot files exist but no
+  // project-level CLAUDE.md is set up yet.
+  const hotForWarm = repeated.byFile
+    .filter((f) => f.calls >= 5 && !NOISY_RX.test(f.target))
+    .slice(0, 5);
+  if (hotForWarm.length >= 3 && !config.claudeMdProject) {
+    const fileList = hotForWarm
+      .map((f) => `- [${f.target.split(/[\\/]/).pop()}](${f.target.replace(/\\/g, "/")})`)
+      .join("\n");
+    const firstPath = hotForWarm[0].target.replace(/\\/g, "/");
+    const wasted = hotForWarm.reduce(
+      (s, f) => s + Math.round((f.totalTokens * (f.calls - 1)) / f.calls),
+      0,
+    );
+    recs.push({
+      title: "Pre-warm hot files via project CLAUDE.md or SessionStart",
+      pattern: `${hotForWarm.length} files were touched 5+ times but no project-level CLAUDE.md exists to pin them.`,
+      why: "Files referenced from a project CLAUDE.md cache once at session start instead of being re-read every turn. A SessionStart hook can also cat them into context up-front if a CLAUDE.md doesn't fit your workflow.",
+      snippet: `# <project>/CLAUDE.md\n## Hot files\n${fileList}\n\n# Or as a SessionStart hook in .claude/settings.json:\n# {\n#   "hooks": {\n#     "SessionStart": [{\n#       "hooks": [{ "type": "command", "command": "cat ${firstPath}" }]\n#     }]\n#   }\n# }`,
+      snippetLang: "md",
+      estimatedImpact: `~${wasted.toLocaleString("en-US")} tokens of repeated reads avoided per session of similar shape.`,
+    });
+  }
+
+  // 22. PreToolUse read-once hook — for extreme repeated-read cases where
+  // pinning in CLAUDE.md may not be enough. Different mechanism than rec #1
+  // (CLAUDE.md pin) and #14 (PostToolUse trim): blocks redundant Reads at the
+  // call site by maintaining a per-session set of already-read paths.
+  const extremeRereads = repeated.byFile.filter((f) => f.calls >= 20);
+  if (extremeRereads.length >= 1) {
+    const top = extremeRereads[0];
+    const wasted = extremeRereads.reduce(
+      (s, f) => s + Math.round((f.totalTokens * (f.calls - 1)) / f.calls),
+      0,
+    );
+    recs.push({
+      title: "Block redundant Reads with a PreToolUse hook",
+      pattern: `${top.target.split(/[\\/]/).pop()} was read ${top.calls}× this session — extreme repetition that CLAUDE.md pinning alone may not stop.`,
+      why: "A PreToolUse hook maintains a per-session set of already-read file_path values and blocks duplicate Read calls at the call site. Stronger than CLAUDE.md pinning (no rule for Claude to ignore) and stronger than PostToolUse trim (the read never happens). Community reports 60–90% Read-token reduction.",
+      snippet: `// .claude/settings.json — install once per project\n{\n  "hooks": {\n    "PreToolUse": [{\n      "matcher": "Read",\n      "hooks": [{ "type": "command", "command": "node read-once-guard.js" }]\n    }]\n  }\n}\n\n// read-once-guard.js — pseudocode\n// 1. Read .claude/.read-once-cache (one path per line) for current session.\n// 2. If incoming file_path is already in the cache: emit JSON\n//    { "decision": "block", "message": "already read this session — quote what you already saw" }\n// 3. Otherwise append the path and let the call through.`,
+      snippetLang: "json",
+      estimatedImpact: `~${wasted.toLocaleString("en-US")} tokens of redundant Read result content blocked per session of similar shape.`,
+    });
+  }
+
+  // 23. Session-too-long restart suggestion. After ~5h wall-clock and 150+
+  // turns, the context is saturated — even with high cache hits, every new
+  // turn is reading a long history. Manual handoff + /clear beats letting the
+  // session bloat further.
+  const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  if (wc.totalSpanMs > FIVE_HOURS_MS && turns.length >= 150) {
+    const hours = (wc.totalSpanMs / (60 * 60 * 1000)).toFixed(1);
+    recs.push({
+      title: "Restart the session before context saturates",
+      pattern: `${turns.length} turns over ${hours}h wall-clock — past the point where even high cache hits keep cumulative input small. Long-session quality decay ("freelancing") is well-documented past ~5h.`,
+      why: "Even at 99% cache hits, every new turn drags the full prior conversation as cache_read. A handoff + /clear restarts you with a fresh, focused context for the next chunk — typically smaller than what you'd accumulate by continuing.",
+      snippet: `# Handoff template — write this BEFORE /clear:\n# plans/handoff-<topic>.md\n\n## Done\n- [list of completed steps]\n\n## Next\n- [next concrete step + file + acceptance criteria]\n\n## Decisions / context\n- [key decisions and why, so the next session doesn't re-litigate]\n\n# Then:\n/clear\n# Resume with: "Read plans/handoff-<topic>.md and continue from 'Next'."`,
+      snippetLang: "sh",
+      estimatedImpact: `Avoids the saturation cliff — concretely depends on how much further the session would have grown.`,
+    });
+  }
+
   // Rank by impact rough heuristic — items with $-numbers in estimatedImpact float up.
   const score = (r: Recommendation) => {
     const m = r.estimatedImpact.match(/\$([0-9,.]+)/);
@@ -937,50 +1278,88 @@ export function stackedAreaAcrossTurns(turns: Turn[]): EChartsOption {
 export function toolUsageChart(stats: ToolStat[]): EChartsOption {
   const top = stats.slice(0, 20);
   return {
-    title: { text: "Tool result tokens by tool", left: "center", textStyle: { color: "#e6edf3" } },
+    title: {
+      text: "Tool result tokens by tool",
+      left: "center",
+      top: 8,
+      textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+    },
     tooltip: {
+      ...TOOLTIP_SKIN,
       trigger: "axis",
-      axisPointer: { type: "shadow" },
+      axisPointer: { type: "shadow", shadowStyle: { color: "rgba(255,255,255,0.04)" } },
       formatter: (params: { name: string; value: number; dataIndex: number }[]) => {
         const idx = params[0]?.dataIndex ?? 0;
-        const s = top[idx];
-        return `<b>${s.name}</b><br/>Result tokens: ${s.resultTokens.toLocaleString("en-US")}<br/>Calls: ${s.calls}<br/>Mean: ${s.meanResultTokens.toLocaleString("en-US")} tok/call<br/>Max: ${s.maxResultTokens.toLocaleString("en-US")} tok`;
+        const s = top[top.length - 1 - idx];
+        const dot = tooltipDot(PALETTE.primary);
+        return (
+          `<div style="font-weight:600;margin-bottom:6px">${dot}${s.name}</div>` +
+          `<div style="color:${PALETTE.muted};font-size:11px;line-height:1.7">` +
+          `Result tokens · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.resultTokens.toLocaleString("en-US")}</span><br/>` +
+          `Calls · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.calls}</span><br/>` +
+          `Mean · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.meanResultTokens.toLocaleString("en-US")}</span> tok/call<br/>` +
+          `Max · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.maxResultTokens.toLocaleString("en-US")}</span> tok` +
+          `</div>`
+        );
       },
     },
-    grid: { left: 130, right: 30, top: 40, bottom: 30 },
-    xAxis: { type: "value", name: "tokens", axisLabel: { color: "#8b949e" } },
+    grid: { left: 130, right: 60, top: 50, bottom: 24, containLabel: false },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: PALETTE.border, type: "dashed", opacity: 0.4 },
+      },
+    },
     yAxis: {
       type: "category",
       data: top.map((s) => s.name).reverse(),
-      axisLabel: { color: "#e6edf3" },
+      axisLabel: { color: PALETTE.text, fontSize: 12 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
     series: [
       {
         type: "bar",
-        itemStyle: { color: "#d29922" },
+        barWidth: "62%",
+        itemStyle: {
+          color: gradientFill(PALETTE.primary, PALETTE.primaryDark, true),
+          borderRadius: [0, 6, 6, 0],
+        },
+        emphasis: {
+          itemStyle: {
+            color: gradientFill(PALETTE.accent, PALETTE.primary, true),
+          },
+        },
         data: top.map((s) => s.resultTokens).reverse(),
         label: {
           show: true,
           position: "right",
-          color: "#8b949e",
+          color: PALETTE.muted,
+          fontSize: 11,
           formatter: (p: { value: number; dataIndex: number }) => {
             const s = top[top.length - 1 - p.dataIndex];
             return `${s.calls} calls`;
           },
         },
+        animationDuration: 600,
+        animationEasing: "cubicOut",
       },
     ],
   };
 }
 
-type Bin = { label: string; max: number; color: string };
+type Bin = { label: string; max: number; from: string; to: string };
 const GAP_BINS: Bin[] = [
-  { label: "<10s", max: 10_000, color: "#3fb950" },
-  { label: "10s-1m", max: 60_000, color: "#7cc777" },
-  { label: "1-5m", max: 300_000, color: "#d29922" },
-  { label: "5-15m", max: 900_000, color: "#f85149" },
-  { label: "15m-1h", max: 3_600_000, color: "#a40e26" },
-  { label: ">1h", max: Infinity, color: "#62050f" },
+  { label: "<10s", max: 10_000, from: PALETTE.good, to: PALETTE.goodDark },
+  { label: "10s-1m", max: 60_000, from: PALETTE.good, to: PALETTE.goodDark },
+  { label: "1-5m", max: 300_000, from: PALETTE.warn, to: PALETTE.warnDark },
+  { label: "5-15m", max: 900_000, from: PALETTE.bad, to: PALETTE.badDark },
+  { label: "15m-1h", max: 3_600_000, from: PALETTE.bad, to: PALETTE.badDark },
+  { label: ">1h", max: Infinity, from: PALETTE.bad, to: PALETTE.badDark },
 ];
 
 export function idleGapHistogramChart(wc: WallClock): EChartsOption {
@@ -998,32 +1377,65 @@ export function idleGapHistogramChart(wc: WallClock): EChartsOption {
       text: "Time between turns",
       subtext: `${wc.gaps.length} gaps · median ${formatDuration(wc.medianGapMs)} · max ${formatDuration(wc.maxGapMs)} · ${wc.longGapsCount} exceed the 5-min cache TTL`,
       left: "center",
-      textStyle: { color: "#e6edf3" },
-      subtextStyle: { color: "#8b949e", fontSize: 12 },
+      top: 8,
+      textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+      subtextStyle: { color: PALETTE.muted, fontSize: 12 },
     },
     tooltip: {
+      ...TOOLTIP_SKIN,
       trigger: "axis",
-      axisPointer: { type: "shadow" },
+      axisPointer: { type: "shadow", shadowStyle: { color: "rgba(255,255,255,0.04)" } },
       formatter: (params: { dataIndex: number; value: number }[]) => {
         const idx = params[0]?.dataIndex ?? 0;
         const bin = GAP_BINS[idx];
         const pct = wc.gaps.length > 0 ? (100 * counts[idx]) / wc.gaps.length : 0;
-        return `<b>${bin.label}</b><br/>${counts[idx]} gaps (${pct.toFixed(1)}%)`;
+        const dot = tooltipDot(bin.from);
+        return (
+          `<div style="font-weight:600;margin-bottom:6px">${dot}${bin.label}</div>` +
+          `<div style="color:${PALETTE.muted};font-size:11px">` +
+          `<span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${counts[idx]}</span> gap${counts[idx] === 1 ? "" : "s"} · ` +
+          `<span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${pct.toFixed(1)}%</span>` +
+          `</div>`
+        );
       },
     },
-    grid: { left: 60, right: 30, top: 70, bottom: 50 },
+    grid: { left: 50, right: 30, top: 80, bottom: 36 },
     xAxis: {
       type: "category",
       data: GAP_BINS.map((b) => b.label),
-      name: "gap",
-      axisLabel: { color: "#8b949e" },
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
-    yAxis: { type: "value", name: "gaps", axisLabel: { color: "#8b949e" } },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: PALETTE.border, type: "dashed", opacity: 0.4 },
+      },
+    },
     series: [
       {
         type: "bar",
-        data: counts.map((c, i) => ({ value: c, itemStyle: { color: GAP_BINS[i].color } })),
-        label: { show: true, position: "top", color: "#e6edf3" },
+        barWidth: "55%",
+        data: counts.map((c, i) => ({
+          value: c,
+          itemStyle: {
+            color: gradientFill(GAP_BINS[i].from, GAP_BINS[i].to, false),
+            borderRadius: [6, 6, 0, 0],
+          },
+        })),
+        label: {
+          show: true,
+          position: "top",
+          color: PALETTE.muted,
+          fontSize: 11,
+        },
+        animationDuration: 600,
+        animationEasing: "cubicOut",
       },
     ],
   };
@@ -1046,8 +1458,9 @@ function repeatedCallsChart(stats: RepeatedCallStat[], title: string, emptyText:
         text: title,
         subtext: emptyText,
         left: "center",
-        textStyle: { color: "#e6edf3" },
-        subtextStyle: { color: "#8b949e" },
+        top: 8,
+        textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+        subtextStyle: { color: PALETTE.muted },
       },
     };
   }
@@ -1055,44 +1468,222 @@ function repeatedCallsChart(stats: RepeatedCallStat[], title: string, emptyText:
   // Truncate long file paths to last 40 chars for readability.
   const labels = top.map((s) => (s.target.length > 40 ? "…" + s.target.slice(-39) : s.target));
   return {
-    title: { text: title, left: "center", textStyle: { color: "#e6edf3" } },
+    title: {
+      text: title,
+      left: "center",
+      top: 8,
+      textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+    },
     tooltip: {
+      ...TOOLTIP_SKIN,
       trigger: "axis",
-      axisPointer: { type: "shadow" },
+      axisPointer: { type: "shadow", shadowStyle: { color: "rgba(255,255,255,0.04)" } },
       formatter: (params: { dataIndex: number }[]) => {
         const idx = params[0]?.dataIndex ?? 0;
-        const s = top[idx];
+        const s = top[top.length - 1 - idx];
         const wasted = Math.round((s.totalTokens * (s.calls - 1)) / s.calls);
+        const dot = tooltipDot(PALETTE.bad);
         return (
-          `<b>${s.target}</b><br/>` +
-          `Calls: ${s.calls}<br/>` +
-          `Total tokens: ${s.totalTokens.toLocaleString("en-US")}<br/>` +
-          `Wasted (calls 2..N): ~${wasted.toLocaleString("en-US")}<br/>` +
-          `Tools: ${s.tools.join(", ")}`
+          `<div style="font-weight:600;margin-bottom:6px;word-break:break-all;max-width:320px">${dot}${s.target}</div>` +
+          `<div style="color:${PALETTE.muted};font-size:11px;line-height:1.7">` +
+          `Calls · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.calls}</span><br/>` +
+          `Total tokens · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.totalTokens.toLocaleString("en-US")}</span><br/>` +
+          `Wasted (calls 2..N) · <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">~${wasted.toLocaleString("en-US")}</span><br/>` +
+          `Tools · <span style="color:${PALETTE.text}">${s.tools.join(", ")}</span>` +
+          `</div>`
         );
       },
     },
-    grid: { left: 280, right: 40, top: 40, bottom: 30 },
-    xAxis: { type: "value", name: "tokens", axisLabel: { color: "#8b949e" } },
+    grid: { left: 280, right: 50, top: 50, bottom: 24 },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: PALETTE.border, type: "dashed", opacity: 0.4 },
+      },
+    },
     yAxis: {
       type: "category",
       data: labels.slice().reverse(),
-      axisLabel: { color: "#e6edf3", fontSize: 11 },
+      axisLabel: { color: PALETTE.text, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
     },
     series: [
       {
         type: "bar",
-        itemStyle: { color: "#f85149" },
+        barWidth: "62%",
+        itemStyle: {
+          color: gradientFill(PALETTE.bad, PALETTE.badDark, true),
+          borderRadius: [0, 6, 6, 0],
+        },
+        emphasis: {
+          itemStyle: { color: gradientFill(PALETTE.warn, PALETTE.bad, true) },
+        },
         data: top.map((s) => s.totalTokens).reverse(),
         label: {
           show: true,
           position: "right",
-          color: "#8b949e",
+          color: PALETTE.muted,
+          fontSize: 11,
           formatter: (p: { dataIndex: number }) => {
             const s = top[top.length - 1 - p.dataIndex];
             return `${s.calls}×`;
           },
         },
+        animationDuration: 600,
+        animationEasing: "cubicOut",
+      },
+    ],
+  };
+}
+
+// Tool errors — horizontal bar chart, one bar per category.
+export function toolErrorsChart(stats: ToolErrorStats): EChartsOption | null {
+  if (stats.total === 0) return null;
+  const rows = stats.byCategory;
+  const labels = rows.map((r) => r.label).reverse();
+  const counts = rows.map((r) => r.count).reverse();
+  return {
+    title: {
+      text: "Tool errors encountered",
+      subtext: `${stats.total} error${stats.total === 1 ? "" : "s"} across ${rows.length} categor${rows.length === 1 ? "y" : "ies"}`,
+      left: "center",
+      top: 8,
+      textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+      subtextStyle: { color: PALETTE.muted, fontSize: 12 },
+    },
+    tooltip: {
+      ...TOOLTIP_SKIN,
+      trigger: "axis",
+      axisPointer: { type: "shadow", shadowStyle: { color: "rgba(255,255,255,0.04)" } },
+      formatter: (params: { dataIndex: number }[]) => {
+        const idx = params[0]?.dataIndex ?? 0;
+        const r = rows[rows.length - 1 - idx];
+        const dot = tooltipDot(PALETTE.bad);
+        return (
+          `<div style="font-weight:600;margin-bottom:4px">${dot}${r.label}</div>` +
+          `<div style="color:${PALETTE.muted};font-size:11px">` +
+          `<span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${r.count}</span> error${r.count === 1 ? "" : "s"}` +
+          `</div>`
+        );
+      },
+    },
+    grid: { left: 130, right: 50, top: 70, bottom: 24 },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: PALETTE.border, type: "dashed", opacity: 0.4 },
+      },
+    },
+    yAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { color: PALETTE.text, fontSize: 12 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [
+      {
+        type: "bar",
+        barWidth: "55%",
+        itemStyle: {
+          color: gradientFill(PALETTE.bad, PALETTE.badDark, true),
+          borderRadius: [0, 6, 6, 0],
+        },
+        emphasis: {
+          itemStyle: { color: gradientFill(PALETTE.warn, PALETTE.bad, true) },
+        },
+        data: counts,
+        label: { show: true, position: "right", color: PALETTE.muted, fontSize: 11 },
+        animationDuration: 600,
+        animationEasing: "cubicOut",
+      },
+    ],
+  };
+}
+
+// Languages — horizontal bar of file_path-touched languages.
+export function languagesChart(stats: LanguageStat[]): EChartsOption | null {
+  if (stats.length === 0) return null;
+  const top = stats.slice(0, 12);
+  const labels = top.map((s) => s.language).reverse();
+  const calls = top.map((s) => s.calls).reverse();
+  return {
+    title: {
+      text: "Languages touched",
+      subtext: `${stats.length} language${stats.length === 1 ? "" : "s"} across Read/Edit/Write calls`,
+      left: "center",
+      top: 8,
+      textStyle: { color: PALETTE.text, fontSize: 14, fontWeight: 600 },
+      subtextStyle: { color: PALETTE.muted, fontSize: 12 },
+    },
+    tooltip: {
+      ...TOOLTIP_SKIN,
+      trigger: "axis",
+      axisPointer: { type: "shadow", shadowStyle: { color: "rgba(255,255,255,0.04)" } },
+      formatter: (params: { dataIndex: number }[]) => {
+        const idx = params[0]?.dataIndex ?? 0;
+        const s = top[top.length - 1 - idx];
+        const dot = tooltipDot(PALETTE.primary);
+        return (
+          `<div style="font-weight:600;margin-bottom:4px">${dot}${s.language}</div>` +
+          `<div style="color:${PALETTE.muted};font-size:11px;line-height:1.7">` +
+          `<span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.calls.toLocaleString("en-US")}</span> call${s.calls === 1 ? "" : "s"}<br/>` +
+          `across <span style="color:${PALETTE.text};font-variant-numeric:tabular-nums">${s.files}</span> file${s.files === 1 ? "" : "s"}` +
+          `</div>`
+        );
+      },
+    },
+    grid: { left: 110, right: 70, top: 70, bottom: 24 },
+    xAxis: {
+      type: "value",
+      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      splitLine: {
+        show: true,
+        lineStyle: { color: PALETTE.border, type: "dashed", opacity: 0.4 },
+      },
+    },
+    yAxis: {
+      type: "category",
+      data: labels,
+      axisLabel: { color: PALETTE.text, fontSize: 12 },
+      axisLine: { show: false },
+      axisTick: { show: false },
+    },
+    series: [
+      {
+        type: "bar",
+        barWidth: "55%",
+        itemStyle: {
+          color: gradientFill(PALETTE.primary, PALETTE.primaryDark, true),
+          borderRadius: [0, 6, 6, 0],
+        },
+        emphasis: {
+          itemStyle: { color: gradientFill(PALETTE.accent, PALETTE.primary, true) },
+        },
+        data: calls,
+        label: {
+          show: true,
+          position: "right",
+          color: PALETTE.muted,
+          fontSize: 11,
+          formatter: (p: { value: number; dataIndex: number }) => {
+            const s = top[top.length - 1 - p.dataIndex];
+            return `${s.files} file${s.files === 1 ? "" : "s"}`;
+          },
+        },
+        animationDuration: 600,
+        animationEasing: "cubicOut",
       },
     ],
   };
@@ -1110,6 +1701,11 @@ export function buildReportData(
   config: IndexedSources,
   invokedSkills: Set<string>,
   corrections: { count: number; examples: { index: number; subject: string }[] },
+  toolErrors: ToolErrorStats,
+  languages: LanguageStat[],
+  timeOfDay: TimeOfDay,
+  multiClauding: MultiClaudingStats | null,
+  llmInsights: LlmInsights | null = null,
 ): ReportData {
   const focus = turns.length > 0 ? pickFocusTurn(turns) : null;
   const focusTotal = focus
@@ -1183,5 +1779,12 @@ export function buildReportData(
       ? { index: focus.index, costUsd: focus.costUsd, total: focusTotal }
       : { index: -1, costUsd: 0, total: 0 },
     modelTimeline: turns.map((t) => ({ index: t.index, model: t.model, timestamp: t.timestamp })),
+    toolErrorsChart: toolErrorsChart(toolErrors),
+    toolErrors,
+    languagesChart: languagesChart(languages),
+    languages,
+    timeOfDay,
+    multiClauding,
+    llmInsights,
   };
 }

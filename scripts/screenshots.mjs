@@ -3,6 +3,9 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const REPORT = process.argv[2] ?? "C:/repo/attribution-view/report-i2insights.html";
+// Optional: --only <id> to capture a single section without touching the others.
+const onlyIdx = process.argv.indexOf("--only");
+const ONLY = onlyIdx > 0 ? process.argv[onlyIdx + 1] : null;
 const OUT = resolve("web/screenshots");
 mkdirSync(OUT, { recursive: true });
 
@@ -46,12 +49,24 @@ const sections = [
   ["attribution", "10-attribution"],
   ["tokens", "11-tokens"],
   ["cost", "12-cost"],
+  ["tool-errors", "13-tool-errors"],
+  ["languages", "14-languages"],
+  ["time-of-day", "15-time-of-day"],
+  ["multi-clauding", "16-multi-clauding"],
 ];
 
 for (const [id, fileLabel] of sections) {
+  if (ONLY && id !== ONLY) continue;
   const handle = await page.$(`#${id}`);
   if (!handle) {
     console.warn(`skip: #${id} not found`);
+    continue;
+  }
+  const isHidden = await handle.evaluate(
+    (el) => el.hidden || el.getAttribute("hidden") !== null,
+  );
+  if (isHidden) {
+    console.warn(`skip: #${id} is hidden (no data this session)`);
     continue;
   }
   await handle.evaluate((el) => el.scrollIntoView({ behavior: "instant", block: "start" }));

@@ -17,11 +17,17 @@ import {
   analyzeSubagents,
   analyzeSkillUsage,
   countCorrectionTurns,
+  analyzeToolErrors,
+  analyzeLanguages,
+  analyzeTimeOfDay,
+  analyzeMultiClauding,
   type IndexedSources,
   type Turn,
 } from "../core/parser.js";
 import { tokenCount } from "../core/tokenize.js";
 import { buildReportData } from "../core/render.js";
+import { DEFAULT_LLM_CONFIG, probeOllama, type LlmConfig } from "../core/llm.js";
+import { analyzeWithLlm, type LlmInsights } from "../core/llm-analysis.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -189,14 +195,29 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function main(): void {
+// Parse --with-ollama [model]. Defaults to llama3.1:8b. If the next arg
+// starts with -- (or is missing), keep the default model. Returns null if
+// the flag wasn't passed at all.
+function parseLlmFlag(argv: string[]): LlmConfig | null {
+  const i = argv.indexOf("--with-ollama");
+  if (i < 0) return null;
+  const next = argv[i + 1];
+  const model = next && !next.startsWith("--") ? next : DEFAULT_LLM_CONFIG.model;
+  const host = process.env.OLLAMA_HOST || DEFAULT_LLM_CONFIG.host;
+  return { ...DEFAULT_LLM_CONFIG, enabled: true, model, host };
+}
+
+async function main(): Promise<void> {
   const jsonlPath = process.argv[2];
   if (!jsonlPath) {
-    console.error("usage: cc-debrief <session.jsonl> [--out <path>]");
+    console.error(
+      "usage: cc-debrief <session.jsonl> [--out <path>] [--with-ollama [model]]",
+    );
     process.exit(1);
   }
   const outIdx = process.argv.indexOf("--out");
   const outPath = outIdx > 0 ? process.argv[outIdx + 1] : resolve(process.cwd(), "report.html");
+  const llmCfg = parseLlmFlag(process.argv);
 
   const claudeDir = resolve(homedir(), ".claude");
   const text = readFileSync(jsonlPath, "utf8");
@@ -213,6 +234,23 @@ function main(): void {
   const subagents = analyzeSubagents(records);
   const invokedSkills = analyzeSkillUsage(records);
   const corrections = countCorrectionTurns(turns);
+  const toolErrors = analyzeToolErrors(records);
+  const languages = analyzeLanguages(records);
+  const timeOfDay = analyzeTimeOfDay(records);
+  const multiClauding = analyzeMultiClauding(records);
+  let llmInsights: LlmInsights | null = null;
+  if (llmCfg) {
+    const reachable = await probeOllama(llmCfg);
+    if (!reachable) {
+      console.warn(
+        `[llm] Ollama not reachable at ${llmCfg.host} — skipping LLM analysis. ` +
+          `Install + run Ollama (https://ollama.com), or omit --with-ollama.`,
+      );
+    } else {
+      console.log(`[llm] running ${llmCfg.model} via ${llmCfg.host} …`);
+      llmInsights = await analyzeWithLlm(turns, wallClock.totalSpanMs, llmCfg);
+    }
+  }
 
   console.log(`file: ${jsonlPath}`);
   console.log(`records parsed:  ${fmt(records.length)}`);
@@ -253,6 +291,11 @@ function main(): void {
       sources,
       invokedSkills,
       corrections,
+      toolErrors,
+      languages,
+      timeOfDay,
+      multiClauding,
+      llmInsights,
     ),
   );
   writeFileSync(outPath, html, "utf8");
@@ -260,4 +303,7 @@ function main(): void {
   console.log(`report written:  ${outPath}`);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
