@@ -248,48 +248,6 @@
   }
   .badges .pill.muted .glyph { background: var(--muted); box-shadow: none; }
 
-  /* Sample preview block */
-  .sample {
-    width: 100%; max-width: 1040px; margin: 56px auto 0;
-    text-align: center;
-  }
-  .sample-eyebrow {
-    color: var(--accent); font-size: 11px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 8px;
-  }
-  .sample-heading {
-    font-size: 22px; font-weight: 700; letter-spacing: -0.015em;
-    color: var(--fg); margin: 0 0 8px;
-  }
-  .sample-sub {
-    color: var(--muted); font-size: 14px; max-width: 640px;
-    margin: 0 auto 24px; line-height: 1.55;
-  }
-  .sample-frame {
-    border: 1px solid var(--border); border-radius: 12px;
-    background: #161b22; padding: 8px;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
-    overflow: hidden;
-  }
-  .sample-frame img {
-    width: 100%; height: auto; display: block;
-    border-radius: 8px;
-  }
-  .sample-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-    margin-top: 16px;
-  }
-  .sample-grid .thumb {
-    border: 1px solid var(--border); border-radius: 8px;
-    background: #161b22; padding: 6px;
-    transition: border-color 0.15s, transform 0.15s;
-  }
-  .sample-grid .thumb:hover { border-color: var(--accent); transform: translateY(-2px); }
-  .sample-grid .thumb img { width: 100%; height: auto; display: block; border-radius: 4px; }
-  .sample-grid .thumb-label {
-    color: var(--muted); font-size: 11px; padding: 6px 4px 2px; text-align: center;
-  }
-
   /* vs /insights teaser */
   .versus {
     width: 100%; max-width: 880px; margin: 56px auto 0;
@@ -322,7 +280,6 @@
   .versus-col code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; color: var(--accent); }
 
   @media (max-width: 720px) {
-    .sample-grid { grid-template-columns: repeat(2, 1fr); }
     .versus-cols { grid-template-columns: 1fr; }
   }
 
@@ -599,47 +556,6 @@
 
     <div class="err" id="drop-err" hidden></div>
   </div>
-
-  <section class="sample" aria-label="Sample report preview">
-    <div class="sample-eyebrow">What you'll see</div>
-    <h2 class="sample-heading">A real session, debriefed in ~100&thinsp;ms</h2>
-    <p class="sample-sub">
-      One HTML page. Hero stats, auto-generated insights, a personalised <em>"things to try next session"</em> checklist with copy-paste fixes, and twelve drill-down panels — all rendered locally in your browser.
-    </p>
-    <div class="sample-frame">
-      <img
-        src="screenshots/report-full.png"
-        alt="cc-debrief HTML report — hero, insights, recommendations, repeated-call charts, idle-gap histogram"
-        loading="lazy" />
-    </div>
-
-    <div class="sample-grid" aria-label="Report panels">
-      <div class="thumb">
-        <img src="screenshots/01-hero.png" alt="Hero panel — total cost, biggest opportunity, session shape" loading="lazy" />
-        <div class="thumb-label">Hero — total cost &amp; biggest opportunity</div>
-      </div>
-      <div class="thumb">
-        <img src="screenshots/03-insights.png" alt="Insights panel — auto-generated findings with action items" loading="lazy" />
-        <div class="thumb-label">Insights — findings + actions</div>
-      </div>
-      <div class="thumb">
-        <img src="screenshots/04-recs.png" alt="Next session — things to try checklist with copy-paste snippets" loading="lazy" />
-        <div class="thumb-label">Next session — copy-paste fixes</div>
-      </div>
-      <div class="thumb">
-        <img src="screenshots/06-treemap.png" alt="Focus turn token attribution treemap" loading="lazy" />
-        <div class="thumb-label">Focus turn — attribution treemap</div>
-      </div>
-      <div class="thumb">
-        <img src="screenshots/07-waste.png" alt="Token waste from repeated calls — files and bash commands" loading="lazy" />
-        <div class="thumb-label">Token waste — repeated calls</div>
-      </div>
-      <div class="thumb">
-        <img src="screenshots/09-idle.png" alt="Time between turns histogram — idle gaps that expired the prompt cache" loading="lazy" />
-        <div class="thumb-label">Idle gaps — cache expiry</div>
-      </div>
-    </div>
-  </section>
 
   <section class="versus" aria-label="cc-debrief versus /insights">
     <h3>How does this compare to Claude Code's built-in <code>/insights</code>?</h3>
