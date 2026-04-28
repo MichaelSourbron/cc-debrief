@@ -1,4 +1,4 @@
-<!-- Auto-generated from 03-used-insights-as-spec.md on 2026-04-28T19:43:14.705Z. Markdown tables converted to monospace ASCII tables in fenced code blocks so they survive copy-paste into Medium. Run scripts/md-tables-to-ascii.mjs to regenerate. -->
+<!-- Auto-generated from 03-used-insights-as-spec.md on 2026-04-28T19:48:14.477Z. Markdown tables converted to monospace ASCII tables in fenced code blocks so they survive copy-paste into Medium. Run scripts/md-tables-to-ascii.mjs to regenerate. -->
 
 # `/insights` vs `cc-debrief`: a feature-by-feature audit (with screenshots)
 
@@ -17,14 +17,21 @@ I went with the third. I ran `/insights` on my own work, treated the report as a
 ## High-level comparison
 
 ```
-           │ /insights (built-in)                         │ cc-debrief (this tool)                                             
-───────────┼──────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────
-Engine     │ Haiku LLM                                    │ Pure deterministic, ~100 ms per session                            
-Token cost │ Charges your subscription                    │ Zero                                                               
-Privacy    │ Sends sessions through the API               │ 100% local, no network                                             
-Scope      │ Last 30 days of sessions                     │ One session OR cross-session combined                              
-Strengths  │ Qualitative — sentiment, frustration, themes │ Quantitative — cache TTL, subagent split, repeated calls, idle gaps
-Weaknesses │ Costs tokens; requires API access            │ No qualitative analysis                                            
+           │ /insights (built-in)    │ cc-debrief (this tool)             
+───────────┼─────────────────────────┼────────────────────────────────────
+Engine     │ Haiku LLM               │ Pure deterministic, ~100 ms per    
+           │                         │ session                            
+Token cost │ Charges your            │ Zero                               
+           │ subscription            │                                    
+Privacy    │ Sends sessions through  │ 100% local, no network             
+           │ the API                 │                                    
+Scope      │ Last 30 days of         │ One session OR cross-session       
+           │ sessions                │ combined                           
+Strengths  │ Qualitative —           │ Quantitative — cache TTL, subagent 
+           │ sentiment, frustration, │ split, repeated calls, idle gaps   
+           │ themes                  │                                    
+Weaknesses │ Costs tokens; requires  │ No qualitative analysis            
+           │ API access              │                                    
 ```
 
 ---
@@ -34,25 +41,38 @@ Weaknesses │ Costs tokens; requires API access            │ No qualitative a
 Sixteen capabilities, side-by-side. Then the per-feature detail follows below.
 
 ```
-Feature                                                   │ /insights              │ cc-debrief               
-──────────────────────────────────────────────────────────┼────────────────────────┼──────────────────────────
-Workflow narrative & themes                               │ ✅                     │ ✅ opt-in                
-Friction analysis (wrong_approach, misunderstood_request) │ ✅                     │ ✅ opt-in                
-Project-area clustering (Cognos / Auth / Payments)        │ ✅                     │ ✅ opt-in                
-Per-session brief summary                                 │ ✅                     │ ✅ opt-in                
-Outcome rating (fully / mostly / partially achieved)      │ ✅                     │ ✅ opt-in                
-Token attribution per turn                                │ —                      │ ✅                       
-Repeated reads & token waste                              │ mentioned in narrative │ ✅ ranked + charted      
-Idle gaps & cache TTL                                     │ neutral histogram      │ ✅ cache-killer framing  
-Hidden subagent cost                                      │ —                      │ ✅                       
-Tool errors by category                                   │ ✅                     │ ✅                       
-Languages touched                                         │ ✅                     │ ✅                       
-User messages by time of day                              │ ✅                     │ ✅                       
-Multi-clauding (parallel sessions)                        │ ✅                     │ ✅                       
-Top expensive turns with prompts                          │ —                      │ ✅                       
-Personalised "next session" checklist                     │ ✅ LLM-written         │ ✅ rule-based, copy-paste
-Insights / findings with action items                     │ ✅ qualitative         │ ✅ quantitative          
-Privacy: 100% local, no API, no upload                    │ —                      │ ✅                       
+Feature                     │ /insights           │ cc-debrief            
+────────────────────────────┼─────────────────────┼───────────────────────
+Workflow narrative & themes │ ✅                  │ ✅ opt-in             
+Friction analysis           │ ✅                  │ ✅ opt-in             
+(wrong_approach,            │                     │                       
+misunderstood_request)      │                     │                       
+Project-area clustering     │ ✅                  │ ✅ opt-in             
+(Cognos / Auth / Payments)  │                     │                       
+Per-session brief summary   │ ✅                  │ ✅ opt-in             
+Outcome rating (fully /     │ ✅                  │ ✅ opt-in             
+mostly / partially          │                     │                       
+achieved)                   │                     │                       
+Token attribution per turn  │ —                   │ ✅                    
+Repeated reads & token      │ mentioned in        │ ✅ ranked + charted   
+waste                       │ narrative           │                       
+Idle gaps & cache TTL       │ neutral histogram   │ ✅ cache-killer       
+                            │                     │ framing               
+Hidden subagent cost        │ —                   │ ✅                    
+Tool errors by category     │ ✅                  │ ✅                    
+Languages touched           │ ✅                  │ ✅                    
+User messages by time of    │ ✅                  │ ✅                    
+day                         │                     │                       
+Multi-clauding (parallel    │ ✅                  │ ✅                    
+sessions)                   │                     │                       
+Top expensive turns with    │ —                   │ ✅                    
+prompts                     │                     │                       
+Personalised "next session" │ ✅ LLM-written      │ ✅ rule-based,        
+checklist                   │                     │ copy-paste            
+Insights / findings with    │ ✅ qualitative      │ ✅ quantitative       
+action items                │                     │                       
+Privacy: 100% local, no     │ —                   │ ✅                    
+API, no upload              │                     │                       
 ```
 
 **Legend:** ✅ does this well · — doesn't do this · ✅ *opt-in* = available behind the `--with-ollama` flag in v0.2 (local Ollama, off by default).
@@ -68,13 +88,20 @@ For each capability the LLM-based tool offers, I asked: *can a deterministic eng
 ### 1. Project-area clustering & workflow narrative
 
 ```
-                        │ /insights                                                                                 │ cc-debrief                                    
-────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────
-Available (default)     │ ✅                                                                                        │ —                                             
-Available (opt-in)      │ n/a                                                                                       │ ✅ via --with-ollama                          
-Mechanism               │ Haiku reads prompts, names workflows                                                      │ Local LLM via Ollama — same idea, your machine
-Output                  │ "You operate in long, ambitious sessions … brainstorm → spec → plan → execute → review …" │ Same shape, generated locally                 
-Could be deterministic? │ No — requires reading prose                                                               │                                               
+                        │ /insights                      │ cc-debrief     
+────────────────────────┼────────────────────────────────┼────────────────
+Available (default)     │ ✅                             │ —              
+Available (opt-in)      │ n/a                            │ ✅ via         
+                        │                                │ --with-ollama  
+Mechanism               │ Haiku reads prompts, names     │ Local LLM via  
+                        │ workflows                      │ Ollama — same  
+                        │                                │ idea, your     
+                        │                                │ machine        
+Output                  │ "You operate in long,          │ Same shape,    
+                        │ ambitious sessions …           │ generated      
+                        │ brainstorm → spec → plan →     │ locally        
+                        │ execute → review …"            │                
+Could be deterministic? │ No — requires reading prose    │                
 ```
 
 **Verdict:** LLM-only by nature. Default `cc-debrief` skips it (no LLM, no network). Opt-in via `--with-ollama` runs a local model to produce the same kind of narrative output without sending data anywhere — see the *v0.2 hybrid mode* section below. The other LLM-only features in the matrix above (friction analysis, brief summary, outcome rating) follow the same pattern.
@@ -84,12 +111,15 @@ Could be deterministic? │ No — requires reading prose                       
 ### 2. Token attribution per turn
 
 ```
-              │ /insights │ cc-debrief                                                                              
-──────────────┼───────────┼─────────────────────────────────────────────────────────────────────────────────────────
-Available     │ ❌        │ ✅                                                                                      
-Granularity   │ n/a       │ Per-turn split: CLAUDE.md / skill listing / history / this turn / system prompt residual
-Visualisation │ n/a       │ Treemap (single turn) + stacked area (across turns)                                     
-Use case      │ n/a       │ "Where did this $2.50 turn's tokens come from?"                                         
+              │ /insight │ cc-debrief                                        
+              │ s        │                                                   
+──────────────┼──────────┼───────────────────────────────────────────────────
+Available     │ ❌       │ ✅                                                
+Granularity   │ n/a      │ Per-turn split: CLAUDE.md / skill listing /       
+              │          │ history / this turn / system prompt residual      
+Visualisation │ n/a      │ Treemap (single turn) + stacked area (across      
+              │          │ turns)                                            
+Use case      │ n/a      │ "Where did this $2.50 turn's tokens come from?"   
 ```
 
 ![cc-debrief — focus turn token attribution treemap](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/06-treemap.png)
@@ -101,12 +131,16 @@ The single most expensive turn, broken into its source attribution. The hero is 
 ### 3. Repeated reads & token waste
 
 ```
-          │ /insights                       │ cc-debrief                                                                      
-──────────┼─────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────
-Available │ ⚠️ Mentioned in narrative       │ ✅ Ranked, charted, with action items                                           
-Detection │ LLM observation                 │ Walk every Read/Edit/Write tool_use, group by file_path, count                  
-Output    │ "You re-read database.ts a lot" │ 155×    36,838 tok    src/database/database.ts + the CLAUDE.md snippet to fix it
-Captures  │ Files only                      │ Files and Bash commands (221× cd)                                               
+          │ /insights        │ cc-debrief                                 
+──────────┼──────────────────┼────────────────────────────────────────────
+Available │ ⚠️ Mentioned in  │ ✅ Ranked, charted, with action items      
+          │ narrative        │                                            
+Detection │ LLM observation  │ Walk every Read/Edit/Write tool_use, group 
+          │                  │ by file_path, count                        
+Output    │ "You re-read     │ 155× 36,838 tok src/database/database.ts + 
+          │ database.ts a    │ the CLAUDE.md snippet to fix it            
+          │ lot"             │                                            
+Captures  │ Files only       │ Files and Bash commands (221× cd)          
 ```
 
 ![cc-debrief — repeated reads and Bash commands ranked by token waste](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/07-waste.png)
@@ -118,12 +152,19 @@ Deterministic counting wins here. Exact token-waste numbers per file, ranked, pa
 ### 4. Idle gaps & prompt-cache TTL
 
 ```
-               │ /insights                                          │ cc-debrief                                                           
-───────────────┼────────────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────
-Available      │ ⚠️ User-response-time histogram (positive framing) │ ✅ Cache-killer framing (red bars > 5 min)                           
-Detection      │ n/a                                                │ Inter-turn timestamp deltas, bucketed by 5-min cache TTL boundary    
-Output         │ "Median response time 48s"                         │ "76 idle gaps over 5 min, max 50h 3m — each likely expired the cache"
-Recommendation │ None                                               │ /clear instead of resuming after long breaks                         
+               │ /insights               │ cc-debrief                     
+───────────────┼─────────────────────────┼────────────────────────────────
+Available      │ ⚠️ User-response-time   │ ✅ Cache-killer framing (red   
+               │ histogram (positive     │ bars > 5 min)                  
+               │ framing)                │                                
+Detection      │ n/a                     │ Inter-turn timestamp deltas,   
+               │                         │ bucketed by 5-min cache TTL    
+               │                         │ boundary                       
+Output         │ "Median response time   │ "76 idle gaps over 5 min, max  
+               │ 48s"                    │ 50h 3m — each likely expired   
+               │                         │ the cache"                     
+Recommendation │ None                    │ /clear instead of resuming     
+               │                         │ after long breaks              
 ```
 
 ![cc-debrief — idle gap histogram with 5-minute cache TTL boundary](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/09-idle.png)
@@ -135,12 +176,16 @@ Same underlying data, different framing. `/insights` shows it as a neutral user-
 ### 5. Hidden subagent cost
 
 ```
-               │ /insights │ cc-debrief                                                                            
-───────────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────
-Available      │ ❌        │ ✅                                                                                    
-Detection      │ n/a       │ Walk progress events with agent_progress subtype, sum usage per agentId               
-Output         │ n/a       │ "39 subagents ran 482 internal turns costing $60.53 (1.7% of grand total)"            
-Why it matters │ n/a       │ Standard tooling shows main-thread cost only; subagent internals are billed separately
+               │ /insight │ cc-debrief                                       
+               │ s        │                                                  
+───────────────┼──────────┼──────────────────────────────────────────────────
+Available      │ ❌       │ ✅                                               
+Detection      │ n/a      │ Walk progress events with agent_progress subtype,
+               │          │ sum usage per agentId                            
+Output         │ n/a      │ "39 subagents ran 482 internal turns costing     
+               │          │ $60.53 (1.7% of grand total)"                    
+Why it matters │ n/a      │ Standard tooling shows main-thread cost only;    
+               │          │ subagent internals are billed separately         
 ```
 
 This is one cc-debrief did first and `/insights` doesn't yet expose. Pure arithmetic on tool_use records — no LLM needed.
@@ -150,12 +195,17 @@ This is one cc-debrief did first and `/insights` doesn't yet expose. Pure arithm
 ### 6. Tool errors encountered
 
 ```
-               │ /insights                                                                          │ cc-debrief                                            
-───────────────┼────────────────────────────────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────
-Available      │ ✅ Bar chart by category                                                           │ ✅ (added after the audit)                            
-Categories     │ Command Failed, User Rejected, File Too Large, File Changed, File Not Found, Other │ Same                                                  
-Detection      │ LLM                                                                                │ Regex bucketing on is_error: true tool_result payloads
-Mechanism cost │ LLM tokens                                                                         │ Zero                                                  
+               │ /insights                         │ cc-debrief           
+───────────────┼───────────────────────────────────┼──────────────────────
+Available      │ ✅ Bar chart by category          │ ✅ (added after the  
+               │                                   │ audit)               
+Categories     │ Command Failed, User Rejected,    │ Same                 
+               │ File Too Large, File Changed,     │                      
+               │ File Not Found, Other             │                      
+Detection      │ LLM                               │ Regex bucketing on   
+               │                                   │ is_error: true       
+               │                                   │ tool_result payloads 
+Mechanism cost │ LLM tokens                        │ Zero                 
 ```
 
 ![cc-debrief — tool errors by category, bucketed from is_error: true tool_results](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/13-tool-errors.png)
@@ -167,11 +217,14 @@ This was a "wait, why doesn't mine do this?" moment. The error messages are wond
 ### 7. Languages touched
 
 ```
-          │ /insights                    │ cc-debrief                                        
-──────────┼──────────────────────────────┼───────────────────────────────────────────────────
-Available │ ✅ Bar chart by language     │ ✅ (added after the audit)                        
-Detection │ LLM                          │ File-extension lookup on Read/Edit/Write file_path
-Output    │ "TypeScript: 4,789 messages" │ "TypeScript: 18 calls / 4 files"                  
+          │ /insights             │ cc-debrief                            
+──────────┼───────────────────────┼───────────────────────────────────────
+Available │ ✅ Bar chart by       │ ✅ (added after the audit)            
+          │ language              │                                       
+Detection │ LLM                   │ File-extension lookup on              
+          │                       │ Read/Edit/Write file_path             
+Output    │ "TypeScript: 4,789    │ "TypeScript: 18 calls / 4 files"      
+          │ messages"             │                                       
 ```
 
 ![cc-debrief — languages touched, by file extension on Read/Edit/Write tool_use](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/14-languages.png)
@@ -183,11 +236,13 @@ Trivial deterministic add. Maps `.ts` / `.tsx` → TypeScript, `.py` → Python,
 ### 8. Time of day distribution
 
 ```
-          │ /insights                                 │ cc-debrief                              
-──────────┼───────────────────────────────────────────┼─────────────────────────────────────────
-Available │ ✅ With timezone selector                 │ ✅ (added after the audit)              
-Buckets   │ 4 (Morning / Afternoon / Evening / Night) │ 24 hours, browser-rotated by TZ         
-Detection │ LLM                                       │ Timestamp getUTCHours() per user message
+          │ /insights                      │ cc-debrief                   
+──────────┼────────────────────────────────┼──────────────────────────────
+Available │ ✅ With timezone selector      │ ✅ (added after the audit)   
+Buckets   │ 4 (Morning / Afternoon /       │ 24 hours, browser-rotated by 
+          │ Evening / Night)               │ TZ                           
+Detection │ LLM                            │ Timestamp getUTCHours() per  
+          │                                │ user message                 
 ```
 
 ![cc-debrief — user messages by time of day with timezone selector](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/15-time-of-day.png)
@@ -199,11 +254,14 @@ Same UX, same TZ-aware rotation, ~30 lines of code.
 ### 9. Multi-clauding (parallel sessions)
 
 ```
-          │ /insights                                                │ cc-debrief                                            
-──────────┼──────────────────────────────────────────────────────────┼───────────────────────────────────────────────────────
-Available │ ✅ (across last 30 days)                                 │ ✅ (across loaded sessions, added after the audit)    
-Detection │ LLM                                                      │ Sweep-line over per-session [startMs, endMs] intervals
-Output    │ "8 overlap events, 14 sessions involved, 4% of messages" │ Same                                                  
+          │ /insights                      │ cc-debrief                   
+──────────┼────────────────────────────────┼──────────────────────────────
+Available │ ✅ (across last 30 days)       │ ✅ (across loaded sessions,  
+          │                                │ added after the audit)       
+Detection │ LLM                            │ Sweep-line over per-session  
+          │                                │ [startMs, endMs] intervals   
+Output    │ "8 overlap events, 14 sessions │ Same                         
+          │ involved, 4% of messages"      │                              
 ```
 
 ![cc-debrief — multi-clauding card detecting parallel sessions across a project](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/16-multi-clauding.png)
@@ -226,11 +284,14 @@ for (const sess of sorted) {
 ### 10. Top expensive turns with prompt context
 
 ```
-          │ /insights │ cc-debrief                                                                            
-──────────┼───────────┼───────────────────────────────────────────────────────────────────────────────────────
-Available │ ❌        │ ✅                                                                                    
-Output    │ n/a       │ Sorted table: cost · input · cache hit rate · subject (the user prompt) · tools called
-Click row │ n/a       │ Expand to see assistant reply preview, model, timestamp                               
+          │ /insight │ cc-debrief                                            
+          │ s        │                                                       
+──────────┼──────────┼───────────────────────────────────────────────────────
+Available │ ❌       │ ✅                                                    
+Output    │ n/a      │ Sorted table: cost · input · cache hit rate · subject 
+          │          │ (the user prompt) · tools called                      
+Click row │ n/a      │ Expand to see assistant reply preview, model,         
+          │          │ timestamp                                             
 ```
 
 ![cc-debrief — top 10 most expensive turns with prompt context](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/05-top-turns.png)
@@ -242,12 +303,20 @@ cc-debrief-only. *"Turn #1278 cost $16.29"* tells you nothing; *"Turn #1278 cost
 ### 11. Personalised "next session" checklist
 
 ```
-          │ /insights                                         │ cc-debrief                                                                                                          
-──────────┼───────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-Available │ ✅ Suggested CLAUDE.md additions, features to try │ ✅ 23 candidate rules → top 5 by impact                                                                             
-Mechanism │ LLM                                               │ Detection-only — pattern matches on existing analyzer outputs                                                       
-Output    │ LLM-written suggestions                           │ Copy-paste snippets (CLAUDE.md, settings.json, slash commands) with estimated $ / token impact                      
-Examples  │ "Try Custom Skills, Hooks, Task Agents"           │ "Pin hot files (~570K tokens saved)" · "Cap MAX_THINKING_TOKENS (~78K shaved)" · "Add .claudeignore (~120K avoided)"
+          │ /insights         │ cc-debrief                                
+──────────┼───────────────────┼───────────────────────────────────────────
+Available │ ✅ Suggested      │ ✅ 23 candidate rules → top 5 by impact   
+          │ CLAUDE.md         │                                           
+          │ additions,        │                                           
+          │ features to try   │                                           
+Mechanism │ LLM               │ Detection-only — pattern matches on       
+          │                   │ existing analyzer outputs                 
+Output    │ LLM-written       │ Copy-paste snippets (CLAUDE.md,           
+          │ suggestions       │ settings.json, slash commands) with       
+          │                   │ estimated $ / token impact                
+Examples  │ "Try Custom       │ "Pin hot files (~570K tokens saved)" ·    
+          │ Skills, Hooks,    │ "Cap MAX_THINKING_TOKENS (~78K shaved)" · 
+          │ Task Agents"      │ "Add .claudeignore (~120K avoided)"       
 ```
 
 ![cc-debrief — Next session: things to try checklist with copy-paste snippets](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/04-recs.png)
@@ -259,11 +328,17 @@ The recommendation engines are the most direct comparison. Different mechanisms,
 ### 12. Insights / auto-generated findings
 
 ```
-          │ /insights                                       │ cc-debrief                                                                                          
-──────────┼─────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────
-Available │ ✅ Friction analysis ("wrong approach ×20")     │ ✅ Behavioural insights with action items                                                           
-Mechanism │ LLM categorisation of conversations             │ Rule-based detection on existing analyzer outputs                                                   
-Style     │ Qualitative ("you tend to over-engineer when…") │ Quantitative ("Cache hit rate 99.3% — excellent" / "76 idle gaps over 5 min — cache likely expired")
+          │ /insights           │ cc-debrief                              
+──────────┼─────────────────────┼─────────────────────────────────────────
+Available │ ✅ Friction         │ ✅ Behavioural insights with action     
+          │ analysis ("wrong    │ items                                   
+          │ approach ×20")      │                                         
+Mechanism │ LLM categorisation  │ Rule-based detection on existing        
+          │ of conversations    │ analyzer outputs                        
+Style     │ Qualitative ("you   │ Quantitative ("Cache hit rate 99.3% —   
+          │ tend to             │ excellent" / "76 idle gaps over 5 min — 
+          │ over-engineer       │ cache likely expired")                  
+          │ when…")             │                                         
 ```
 
 ![cc-debrief — auto-generated insights with action items](https://raw.githubusercontent.com/MichaelSourbron/cc-debrief/main/web/screenshots/03-insights.png)
@@ -275,13 +350,15 @@ Different shape, complementary value. `/insights`' friction analysis is genuinel
 ### 13. Privacy & access
 
 ```
-                  │ /insights               │ cc-debrief                           
-──────────────────┼─────────────────────────┼──────────────────────────────────────
-Network calls     │ ✅ Sessions sent to API │ ❌ Zero                              
-API key required  │ ✅                      │ ❌                                   
-Internet required │ ✅                      │ ❌                                   
-Cost per run      │ Subscription tokens     │ Zero                                 
-Sharable report   │ Only via account        │ Static report.html, share with anyone
+                  │ /insights           │ cc-debrief                      
+──────────────────┼─────────────────────┼─────────────────────────────────
+Network calls     │ ✅ Sessions sent to │ ❌ Zero                         
+                  │ API                 │                                 
+API key required  │ ✅                  │ ❌                              
+Internet required │ ✅                  │ ❌                              
+Cost per run      │ Subscription tokens │ Zero                            
+Sharable report   │ Only via account    │ Static report.html, share with  
+                  │                     │ anyone                          
 ```
 
 For most users this column is fine for both. For regulated work, NDA'd client code, or anyone who can't send anything to a third-party API, it's a hard stop.
@@ -345,20 +422,29 @@ While I was inside the engine I asked the same question of the wider community: 
 Net additions — **12 new detection rules**, taking the engine from 11 → 23 candidate recommendations:
 
 ```
-#  │ Rule                                 │ Trigger                                     
-───┼──────────────────────────────────────┼─────────────────────────────────────────────
-12 │ Cap MAX_THINKING_TOKENS              │ Thinking >50% of total output               
-13 │ Add .claudeignore                    │ Hot files in node_modules/, dist/, build/   
-14 │ PostToolUse hook to trim Bash output │ Bash mean >2K tok AND ≥10 calls             
-15 │ Use 1h cache TTL                     │ ≥5 long gaps AND <20% writes already 1h-tier
-16 │ Replace vague prompts                │ ≥2 sub-30-char prompts at >3× median cost   
-17 │ Delegate to subagents                │ ≥2 turns with 4+ Reads and ≤1 Edit          
-18 │ Pre-warm hot files                   │ ≥3 hot files AND no project CLAUDE.md       
-19 │ Reduce output verbosity              │ Mean visible output >1500 tok/turn          
-20 │ Bash command allowlist               │ Safe-prefix command with ≥10 calls          
-21 │ Audit MCP servers                    │ Residual share >30% of input                
-22 │ PreToolUse read-once hook            │ Any file with ≥20 reads                     
-23 │ Restart at session saturation        │ >5h wall-clock AND ≥150 turns               
+#        │ Rule                        │ Trigger                          
+─────────┼─────────────────────────────┼──────────────────────────────────
+12       │ Cap MAX_THINKING_TOKENS     │ Thinking >50% of total output    
+13       │ Add .claudeignore           │ Hot files in node_modules/,      
+         │                             │ dist/, build/                    
+14       │ PostToolUse hook to trim    │ Bash mean >2K tok AND ≥10 calls  
+         │ Bash output                 │                                  
+15       │ Use 1h cache TTL            │ ≥5 long gaps AND <20% writes     
+         │                             │ already 1h-tier                  
+16       │ Replace vague prompts       │ ≥2 sub-30-char prompts at >3×    
+         │                             │ median cost                      
+17       │ Delegate to subagents       │ ≥2 turns with 4+ Reads and ≤1    
+         │                             │ Edit                             
+18       │ Pre-warm hot files          │ ≥3 hot files AND no project      
+         │                             │ CLAUDE.md                        
+19       │ Reduce output verbosity     │ Mean visible output >1500        
+         │                             │ tok/turn                         
+20       │ Bash command allowlist      │ Safe-prefix command with ≥10     
+         │                             │ calls                            
+21       │ Audit MCP servers           │ Residual share >30% of input     
+22       │ PreToolUse read-once hook   │ Any file with ≥20 reads          
+23       │ Restart at session          │ >5h wall-clock AND ≥150 turns    
+         │ saturation                  │                                  
 ```
 
 The engine still surfaces only **the top 5** ranked by estimated impact — adding 12 candidates didn't bloat the output, it improved the *selection*.
