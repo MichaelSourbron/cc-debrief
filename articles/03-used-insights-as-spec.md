@@ -63,12 +63,13 @@ For each capability the LLM-based tool offers, I asked: *can a deterministic eng
 
 | | `/insights` | `cc-debrief` |
 |---|---|---|
-| Available | ✅ | ❌ (deliberately) |
-| Mechanism | LLM reads prompts, names workflows | n/a |
-| Output | *"You operate in long, ambitious sessions … brainstorm → spec → plan → execute → review …"* | n/a |
+| Available (default) | ✅ | — |
+| Available (opt-in) | n/a | ✅ via `--with-ollama` |
+| Mechanism | Haiku reads prompts, names workflows | Local LLM via [Ollama](https://ollama.com) — same idea, your machine |
+| Output | *"You operate in long, ambitious sessions … brainstorm → spec → plan → execute → review …"* | Same shape, generated locally |
 | Could be deterministic? | **No** — requires reading prose |
 
-**Verdict:** LLM-only. Skipped. Trying to fake this with regex would produce a worse version of what `/insights` does well.
+**Verdict:** LLM-only by nature. Default `cc-debrief` skips it (no LLM, no network). Opt-in via `--with-ollama` runs a local model to produce the same kind of narrative output without sending data anywhere — see the *v0.2 hybrid mode* section below. The other LLM-only features in the matrix above (friction analysis, brief summary, outcome rating) follow the same pattern.
 
 ---
 
